@@ -1,7 +1,5 @@
 package model
 
-import "crypto/rsa"
-
 type Input struct {
 	// Hash of the transaction that outputs this coin.
 	PrevTxHash string
@@ -14,8 +12,8 @@ type Input struct {
 type Output struct {
 	// how much value to transfer.
 	Value float64
-	// Public key of the receiver
-	PublicKey rsa.PublicKey
+	// Public key of the receiver, in the form of bytes.
+	PublicKey []byte
 }
 
 type Transaction struct {
@@ -25,8 +23,6 @@ type Transaction struct {
 	Inputs []Input
 	// All outputs of this transaction.
 	Outputs []Output
-	// If true, this transaction contains only 1 output and is the miner's reward.
-	IsCoinbase bool
 }
 
 type TransactionPool struct {

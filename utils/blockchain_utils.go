@@ -30,6 +30,6 @@ func HandleNewBlock(pendingBlock *model.Block, blockchain *model.Blockchain) boo
 // 2. Difficulty matches.
 // 3. Each transaction in the block is valid.
 // 4. Block is not too deep.
-func ValidateBlock(pendingBlock *model.Block, blockchain *model.Blockchain, difficulty int) bool {
+func IsValidBlock(pendingBlock *model.Block, blockchain *model.Blockchain, difficulty int) bool {
 	return false
 }

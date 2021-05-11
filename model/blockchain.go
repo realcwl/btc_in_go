@@ -5,9 +5,9 @@ type Block struct {
 	Hash string
 	// Hash of the previous block in the hex format.
 	PrevHash string
-	// Transactions for this block.
+	// Transactions for this block. The first transaction is the coinbase transaction.
 	Txs []Transaction
-	// Coinbase transaction for miner rewards.
+	// Coinbase transaction as the miner's reward.
 	Coinbase Transaction
 	// Nouce is the miner's chanllenge for computing the block.
 	Nounce int64
