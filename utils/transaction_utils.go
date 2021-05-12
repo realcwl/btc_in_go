@@ -2,7 +2,7 @@ package utils
 
 import (
 	"errors"
-	"log"
+	"fmt"
 
 	"github.com/Luismorlan/btc_in_go/model"
 )
@@ -28,10 +28,10 @@ func GetOutputBytes(output *model.Output) []byte {
 }
 
 // Concat all inputs (including signature) and outputs raw data in byte slices.
-func GetTransactionBytes(t *model.Transaction) ([]byte, error) {
+func GetTransactionBytes(tx *model.Transaction) ([]byte, error) {
 	var data []byte
-	for i := 0; i < len(t.Inputs); i++ {
-		input := &t.Inputs[i]
+	for i := 0; i < len(tx.Inputs); i++ {
+		input := &tx.Inputs[i]
 		inputData, err := GetInputBytes(input, true /*withSig=*/)
 		if err != nil {
 			return nil, err
@@ -39,8 +39,8 @@ func GetTransactionBytes(t *model.Transaction) ([]byte, error) {
 		data = append(data, inputData...)
 	}
 
-	for i := 0; i < len(t.Outputs); i++ {
-		output := &t.Outputs[i]
+	for i := 0; i < len(tx.Outputs); i++ {
+		output := &tx.Outputs[i]
 		outputData := GetOutputBytes(output)
 		data = append(data, outputData...)
 	}
@@ -71,63 +71,161 @@ func GetInputDataToSignByIndex(t *model.Transaction, index int) ([]byte, error) 
 }
 
 // A transaction is valid if:
-// 0. Is a valid coinbase transaction.
 // 1. Total outputs are smaller or equal to inputs.
 // 2. All inputs are UTXO.
 // 3. Outputs are non-negative number.
 // 4. Signatures are valid.
 // 5. No double spending.
-func IsValidTransaction(t *model.Transaction, ledger *model.Ledger) bool {
+// 6. Hash matches.
+func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 	var totalInput = 0.0
 	var totalOutput = 0.0
+
+	// Tx hash should match.
+	txBytes, err := GetTransactionBytes(tx)
+	if err != nil {
+		return err
+	}
+	if BytesToHex(SHA256(txBytes)) != tx.Hash {
+		return errors.New(fmt.Sprintf("transaction contains a invalid hash: %s", *tx))
+	}
 
 	// Store all seen UTXOs to avoid double spending.
 	seenUtxo := make(map[model.UTXO]bool)
 
-	for i := 0; i < len(t.Inputs); i++ {
+	for i := 0; i < len(tx.Inputs); i++ {
 		// Verify the input is using UTXO.
-		input := &t.Inputs[i]
+		input := &tx.Inputs[i]
 		inputUtxo := CreateUtxoFromInput(input)
-		output, ok := ledger.L[inputUtxo]
+		output, ok := l.L[inputUtxo]
 		if !ok {
-			log.Println("Transaction input has been spent: ", *t)
-			return false
+			return errors.New(fmt.Sprintf("Transaction input has been spent: %s", *tx))
 		}
 		totalInput += output.Value
 
 		// Verify signature.
 		inputData, err := GetInputBytes(input, false /*withSig=*/)
 		if err != nil {
-			log.Println(err)
-			return false
+			return err
 		}
 		pk := BytesToPublicKey(output.PublicKey)
 		if pk == nil {
-			log.Println("Invalid bytes when reconstructing public key.")
-			return false
+			return errors.New("Invalid bytes when reconstructing public key")
 		}
 		if isValid := Verify(inputData, pk, input.Signature); !isValid {
-			log.Println("The input's signature doesn't match Tx data", *input)
-			return false
+			return errors.New("Signature verification failed.")
 		}
 
 		// No double spending.
 		if _, exist := seenUtxo[inputUtxo]; exist {
-			log.Println("The input is a double spending", *input)
-			return false
+			return errors.New(fmt.Sprintf("The input is a double spending", *input))
 		}
 		seenUtxo[inputUtxo] = true
 	}
 
-	for i := 0; i < len(t.Outputs); i++ {
+	for i := 0; i < len(tx.Outputs); i++ {
 		// Output should be non-negative number.
-		output := t.Outputs[i]
+		output := tx.Outputs[i]
 		if output.Value < 0 {
-			log.Println("Invalid output", output)
-			return false
+			return errors.New(fmt.Sprintf("Invalid output", output))
 		}
 		totalOutput += output.Value
 	}
 
-	return totalInput >= totalOutput
+	if totalInput >= totalOutput {
+		return errors.New(fmt.Sprintf("Total input %f is greater than total output %f", totalInput, totalOutput))
+	}
+	return nil
+}
+
+// Calculate total transaction fee given transaction and ledger. This function will not
+// modify ledger.
+func CalcTxFee(txs []model.Transaction, l *model.Ledger) (float64, error) {
+	var fee float64
+	for i := 0; i < len(txs); i++ {
+		tx := txs[i]
+
+		var totalInput = 0.0
+		var totalOutput = 0.0
+
+		for j := 0; i < len(tx.Inputs); j++ {
+			// Verify the input is using UTXO.
+			input := &tx.Inputs[j]
+			inputUtxo := CreateUtxoFromInput(input)
+			output, ok := l.L[inputUtxo]
+			if !ok {
+				return 0.0, errors.New("unexpected error: doesn't find utxo in ledger")
+			}
+			totalInput += output.Value
+		}
+
+		for j := 0; i < len(tx.Outputs); j++ {
+			output := &tx.Outputs[j]
+			totalOutput += output.Value
+		}
+
+		if totalOutput > totalInput {
+			return 0.0, errors.New("total output is greater than total inputs")
+		}
+
+		fee += totalOutput - totalInput
+	}
+
+	return fee, nil
+}
+
+// Fill hash simply compute the SHA256 hash for the transaction raw data and set the hash.
+func FillTxHash(tx *model.Transaction) error {
+	if tx == nil {
+		return errors.New("input transaction to hash cannot be nil")
+	}
+	data, err := GetTransactionBytes(tx)
+	if err != nil {
+		return err
+	}
+	hash := SHA256(data)
+	tx.Hash = BytesToHex(hash)
+	return nil
+}
+
+// A valid coinbase transaction should contains 0 input and 1 output. And total reward should be
+// smaller than transaction fee + default reward.
+// READONLY:
+// * tx
+func IsValidCoinbase(tx *model.Transaction, maxFee float64) error {
+	// Tx hash should match.
+	txBytes, err := GetTransactionBytes(tx)
+	if err != nil {
+		return err
+	}
+	if BytesToHex(SHA256(txBytes)) != tx.Hash {
+		return errors.New(fmt.Sprintf("coinbase transaction contains a invalid hash: %s", *tx))
+	}
+
+	// Should contains 0 input and 1 output.
+	if len(tx.Inputs) != 0 || len(tx.Outputs) != 1 {
+		return errors.New(fmt.Sprintf("coinbase should contain 0 input and 1 output, actual: %d, %d", len(tx.Inputs), len(tx.Outputs)))
+	}
+
+	// total fee should be smaller than maxFee.
+	if tx.Outputs[0].Value > maxFee {
+		return errors.New(fmt.Sprintf("total fee: %f is greater than allowed: %f", tx.Outputs[0].Value, maxFee))
+	}
+
+	return nil
+}
+
+//Create a transaction with a single output, which is the miner's public key.
+// READONLY:
+// *pk
+func CreateCoinbaseTx(totalReward float64, pk []byte) model.Transaction {
+	tx := model.Transaction{
+		Outputs: []model.Output{{
+			Value:     totalReward,
+			PublicKey: pk,
+		}},
+	}
+	// Ignore error because tx can never be nil.
+	FillTxHash(&tx)
+	return tx
 }

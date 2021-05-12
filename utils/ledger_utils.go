@@ -13,10 +13,13 @@ func CreateUtxoFromInput(input *model.Input) model.UTXO {
 // 1. Validate transaction.
 // 2. Claim every input.
 // 3. Store every output.
-func HandleTransaction(tx *model.Transaction, l *model.Ledger) bool {
+// Return true if currently handles the transactions, false if the transaction is invalid.
+// Note: ledger will be changed afterwards, please
+func HandleTransaction(tx *model.Transaction, l *model.Ledger) error {
 	// First validate the transaction.
-	if !IsValidTransaction(tx, l) {
-		return false
+	err := IsValidTransaction(tx, l)
+	if err != nil {
+		return err
 	}
 
 	// Claim every input
@@ -36,18 +39,20 @@ func HandleTransaction(tx *model.Transaction, l *model.Ledger) bool {
 		l.L[utxo] = *output
 	}
 
-	return true
+	return nil
 }
 
 // Handle a bunch of transactions.
 // Note that ledger will be changed directly, when passing ledger to this function, be sure to pass a deep copy.
-func HandleTransactions(txs []model.Transaction, l *model.Ledger) bool {
+// MUTABLE:
+// * l
+func HandleTransactions(txs []model.Transaction, l *model.Ledger) error {
 	for i := 0; i < len(txs); i++ {
 		tx := &txs[i]
-		success := HandleTransaction(tx, l)
-		if !success {
-			return false
+		err := HandleTransaction(tx, l)
+		if err != nil {
+			return err
 		}
 	}
-	return true
+	return nil
 }

@@ -18,7 +18,9 @@ type BlockWrapper struct {
 	// The actual block
 	B Block
 	// There can be multiple children because we allow fork.
-	Children []BlockWrapper
+	Children []*BlockWrapper
+	// Only one parent is allowed
+	Parent *BlockWrapper
 	// height in the blockchain.
 	Height int64
 	// Ledger at that node.
@@ -27,15 +29,25 @@ type BlockWrapper struct {
 
 type Blockchain struct {
 	// The block with the maximum height
-	Tail BlockWrapper
+	Tail *BlockWrapper
 	// A map from hex string of the block hash to block wrapper.
-	Chain map[string]BlockWrapper
+	Chain map[string]*BlockWrapper
 }
 
 // Create a new blockchain
 func NewBlockChain() Blockchain {
-	return Blockchain{
-		Tail:  BlockWrapper{},
-		Chain: make(map[string]BlockWrapper),
+	// Create a genesis block that has only hash "0"
+	genesisBlock := Block{
+		Hash: "0",
 	}
+	genesisBlockWrapper := BlockWrapper{
+		B:      genesisBlock,
+		Height: 0,
+		L:      NewLedger(),
+	}
+	bc := Blockchain{
+		Tail:  &genesisBlockWrapper,
+		Chain: map[string]*BlockWrapper{"0": &genesisBlockWrapper},
+	}
+	return bc
 }

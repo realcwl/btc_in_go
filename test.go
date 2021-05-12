@@ -53,6 +53,10 @@ func main() {
 	sliceInsert(b)
 	log.Println(b)
 
+	var c []int
+	c = append(c, 0)
+	log.Println(c)
+
 	mp1 := m{
 		mm: map[int]bool{1: true},
 	}
