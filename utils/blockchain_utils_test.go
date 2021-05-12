@@ -9,16 +9,15 @@ import (
 
 func createTestBlock() model.Block {
 	return model.Block{
-		Hash:     "sdcdskcsdk",
-		PrevHash: "dsweweq",
+		PrevHash: "00ab",
 		Txs: []model.Transaction{
 			{
-				Hash: "sdcsdcsd",
+				Hash: "887d",
 			},
 		},
 		Nounce: 3,
 		Coinbase: model.Transaction{
-			Hash: "sdcsdcsd",
+			Hash: "00cd",
 		},
 	}
 }
@@ -28,33 +27,46 @@ func TestGetBlockBytes(t *testing.T) {
 
 	var expectedBlockBytes []byte
 
-	actualBlockBytes, actualErr := GetBlockBytes(&testBlock)
+	actualBlockBytes, _ := GetBlockBytes(&testBlock)
 
 	expectedBlockBytes = append(expectedBlockBytes, Int64ToBytes(testBlock.Nounce)...)
-	preHashBytes, hashErr := HexToBytes(testBlock.PrevHash)
-	if hashErr == nil {
-		expectedBlockBytes = append(expectedBlockBytes, preHashBytes...)
+	preHashBytes, _ := HexToBytes(testBlock.PrevHash)
+	expectedBlockBytes = append(expectedBlockBytes, preHashBytes...)
+	txBytes, _ := GetTransactionBytes(&testBlock.Txs[0])
+	expectedBlockBytes = append(expectedBlockBytes, txBytes...)
+	coinbaseBytes, _ := GetTransactionBytes(&testBlock.Coinbase)
+	expectedBlockBytes = append(expectedBlockBytes, coinbaseBytes...)
+	assert.Equal(t, expectedBlockBytes, actualBlockBytes)
+}
 
-		txBytes, txsErr := GetTransactionBytes(&testBlock.Txs[0])
-		if txsErr == nil {
-			expectedBlockBytes = append(expectedBlockBytes, txBytes...)
+func TestMine(t *testing.T) {
+	testDifficulty := 1
+	testBlock := createTestBlock()
 
-			coinbaseBytes, cbErr := GetTransactionBytes(&testBlock.Coinbase)
-			if cbErr == nil {
-				expectedBlockBytes = append(expectedBlockBytes, coinbaseBytes...)
-				assert.Equal(t, expectedBlockBytes, actualBlockBytes)
-				assert.Nil(t, actualErr)
-			} else {
-				assert.Nil(t, actualBlockBytes)
-				assert.Equal(t, hashErr, actualErr)
-			}
-		} else {
-			assert.Nil(t, actualBlockBytes)
-			assert.Equal(t, hashErr, actualErr)
-		}
-
-	} else {
-		assert.Nil(t, actualBlockBytes)
-		assert.Equal(t, hashErr, actualErr)
+	actualErr := Mine(&testBlock, testDifficulty)
+	assert.Nil(t, actualErr)
+	expectedMatched, _ := MatchDifficulty(&testBlock, testDifficulty)
+	assert.True(t, expectedMatched)
+}
+func TestMatchDifficulty(t *testing.T) {
+	testDifficulty := 8
+	testBlock := createTestBlock()
+	actualMatched, actualDigest := MatchDifficulty(&testBlock, testDifficulty)
+	blockBytes, expectedErr := GetBlockBytes(&testBlock)
+	if expectedErr != nil {
+		assert.Equal(t, "", actualDigest)
+		assert.False(t, actualMatched)
 	}
+	digestBytes := SHA256(blockBytes)
+	expectedDigest := BytesToHex(digestBytes)
+
+	expectedRes := ByteHasLeadingZeros(digestBytes, testDifficulty)
+	assert.Equal(t, expectedRes, actualMatched)
+	assert.Equal(t, expectedDigest, actualDigest)
+}
+func TestByteHasLeadingZeros(t *testing.T) {
+	testByte := []byte{2, 45, 40}
+	assert.True(t, ByteHasLeadingZeros(testByte, 6))
+	assert.False(t, ByteHasLeadingZeros(testByte, 9))
+	assert.False(t, ByteHasLeadingZeros(testByte, 25))
 }

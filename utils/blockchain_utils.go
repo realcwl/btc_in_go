@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"log"
 
 	"github.com/Luismorlan/btc_in_go/model"
@@ -41,7 +42,16 @@ func CreateNewBlock(txs []model.Transaction, prevHash string, reward float64, pk
 // TODO(chenweilunster): Mine a block, fill the nounce and hash given the current difficulty setting.
 // difficulty - how many leading zeros
 func Mine(block *model.Block, difficulty int) error {
-	return nil
+
+	for i := 0; i < int(^uint(0)>>1); i++ {
+		block.Nounce = int64(i)
+		isMatched, digest := MatchDifficulty(block, difficulty)
+		if isMatched {
+			block.Hash = digest
+			return nil
+		}
+	}
+	return errors.New("failed to find any nounce")
 }
 
 // TODO : get block in bytes format
@@ -60,9 +70,10 @@ func GetBlockBytes(block *model.Block) ([]byte, error) {
 	rawBlock = append(rawBlock, preHashBytes...)
 
 	// convert transactions to bytes
-	for _, tx := range block.Txs {
-		txBytes, err := GetTransactionBytes(&tx)
-		if err == nil {
+	for i := 0; i < len(block.Txs); i++ {
+		tx := &block.Txs[i]
+		txBytes, err := GetTransactionBytes(tx)
+		if err != nil {
 			return nil, err
 		}
 		rawBlock = append(rawBlock, txBytes...)
@@ -78,15 +89,33 @@ func GetBlockBytes(block *model.Block) ([]byte, error) {
 	return rawBlock, nil
 }
 
-func MatchDifficulty(block *model.Block, difficulty int) bool {
+func MatchDifficulty(block *model.Block, difficulty int) (bool, string) {
 	blockBytes, err := GetBlockBytes(block)
 	if err != nil {
 		log.Println(err)
-		return false
+		return false, ""
 	}
-	return ByteHasLeadingZeros(blockBytes, difficulty)
+	digest := SHA256(blockBytes)
+	return ByteHasLeadingZeros(digest, difficulty), BytesToHex(digest)
 }
 
 func ByteHasLeadingZeros(bytes []byte, difficulty int) bool {
-	return true
+	numOfZeroBytes := difficulty / 8
+	numOfZeroBits := difficulty % 8
+
+	totalBytes := numOfZeroBytes
+	if numOfZeroBits > 0 {
+		totalBytes += 1
+	}
+	if totalBytes > len(bytes) {
+		return false
+	}
+	for i := 0; i < numOfZeroBytes; i++ {
+		if bytes[i] != 0 {
+			return false
+		}
+	}
+	nextByte := bytes[numOfZeroBytes]
+
+	return (nextByte>>byte(8-numOfZeroBits))&0xFF == 0
 }
