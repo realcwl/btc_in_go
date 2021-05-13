@@ -92,7 +92,7 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 		return err
 	}
 	if BytesToHex(SHA256(txBytes)) != tx.Hash {
-		return errors.New(fmt.Sprintf("transaction contains a invalid hash: %s", *tx))
+		return fmt.Errorf("transaction contains a invalid hash: %+v", *tx)
 	}
 
 	// Store all seen UTXOs to avoid double spending.
@@ -104,7 +104,7 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 		inputUtxo := CreateUtxoFromInput(input)
 		output, ok := l.L[inputUtxo]
 		if !ok {
-			return errors.New(fmt.Sprintf("Transaction input has been spent: %s", *tx))
+			return fmt.Errorf("transaction input has been spent: %+v", *tx)
 		}
 		totalInput += output.Value
 
@@ -115,15 +115,15 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 		}
 		pk := BytesToPublicKey(output.PublicKey)
 		if pk == nil {
-			return errors.New("Invalid bytes when reconstructing public key")
+			return errors.New("invalid bytes when reconstructing public key")
 		}
 		if isValid := Verify(inputData, pk, input.Signature); !isValid {
-			return errors.New("Signature verification failed.")
+			return errors.New("signature verification failed")
 		}
 
 		// No double spending.
 		if _, exist := seenUtxo[inputUtxo]; exist {
-			return errors.New(fmt.Sprintf("The input is a double spending", *input))
+			return fmt.Errorf("the input is a double spending: %+v", *input)
 		}
 		seenUtxo[inputUtxo] = true
 	}
@@ -132,13 +132,13 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 		// Output should be non-negative number.
 		output := tx.Outputs[i]
 		if output.Value < 0 {
-			return errors.New(fmt.Sprintf("Invalid output", output))
+			return fmt.Errorf("invalid output: %+v", output)
 		}
 		totalOutput += output.Value
 	}
 
 	if totalInput >= totalOutput {
-		return errors.New(fmt.Sprintf("Total input %f is greater than total output %f", totalInput, totalOutput))
+		return fmt.Errorf("total input %+v is greater than total output %+v", totalInput, totalOutput)
 	}
 	return nil
 }
@@ -204,17 +204,17 @@ func IsValidCoinbase(tx *model.Transaction, maxFee float64) error {
 		return err
 	}
 	if BytesToHex(SHA256(txBytes)) != tx.Hash {
-		return errors.New(fmt.Sprintf("coinbase transaction contains a invalid hash: %s", *tx))
+		return fmt.Errorf("coinbase transaction contains a invalid hash: %+v", *tx)
 	}
 
 	// Should contains 0 input and 1 output.
 	if len(tx.Inputs) != 0 || len(tx.Outputs) != 1 {
-		return errors.New(fmt.Sprintf("coinbase should contain 0 input and 1 output, actual: %d, %d", len(tx.Inputs), len(tx.Outputs)))
+		return fmt.Errorf("coinbase should contain 0 input and 1 output, actual: %d, %d", len(tx.Inputs), len(tx.Outputs))
 	}
 
 	// total fee should be smaller than maxFee.
 	if tx.Outputs[0].Value > maxFee {
-		return errors.New(fmt.Sprintf("total fee: %f is greater than allowed: %f", tx.Outputs[0].Value, maxFee))
+		return fmt.Errorf("total fee: %f is greater than allowed: %f", tx.Outputs[0].Value, maxFee)
 	}
 
 	return nil
