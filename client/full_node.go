@@ -87,7 +87,7 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) error {
 	}
 
 	// Coinbase should be valid.
-	err = utils.IsValidCoinbase(&pendingBlock.Coinbase, fee+f.config.COINBASE_REWARD)
+	err = utils.IsValidCoinbase(pendingBlock.Coinbase, fee+f.config.COINBASE_REWARD)
 	if err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) error {
 
 	// Add block to blockchain and remove all transaction from the Tx pool.
 	blockWrapper := model.BlockWrapper{
-		B:      *pendingBlock,
+		B:      pendingBlock,
 		Parent: prevBlockWrapper,
 		Height: prevBlockWrapper.Height + 1,
 		L:      l,

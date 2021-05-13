@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+option go_package = "github.com/Luismorlan/btc_in_go/model/model";
+
+
+message Input  {
+	// Hash of the transaction that outputs this coin.
+	string prev_tx_hash = 1;
+	// The index of the output in that transaction. Together with PrevTxHash, it identifies the unique output.
+	int64 index = 2;
+	// Signature using the previous owner's PK.
+  bytes signature = 3;
+}
+
+message Output {
+  // how much value to transfer.
+  double Value = 1;
+  // Public key of the receiver, in the form of bytes.
+  bytes public_key = 2;
+}
+
+message Transaction {
+	// Hash of this transaction. We use this to uniquely identify the transaction.
+  string hash = 1;
+	// All inputs of this transaction.
+  repeated Input inputs = 2;
+	// All outputs of this transaction.
+  repeated Output outputs = 3; 
+}

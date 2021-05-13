@@ -1,0 +1,17 @@
+syntax = "proto3";
+import "model/transaction.proto";
+
+option go_package = "github.com/Luismorlan/btc_in_go/model/model";
+
+message Block {
+	// Hash of this entire block in the hex format.
+	string hash = 1;
+	// Hash of the previous block in the hex format.
+	string PrevHash = 2;
+	// Transactions for this block. The first transaction is the coinbase transaction.
+	repeated Transaction txs = 3;
+	// Coinbase transaction as the miner's reward.
+	Transaction coinbase = 4;
+	// Nouce is the miner's chanllenge for computing the block.
+	int64 nounce = 5;
+}
