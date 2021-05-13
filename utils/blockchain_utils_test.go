@@ -10,13 +10,13 @@ import (
 func createTestBlock() model.Block {
 	return model.Block{
 		PrevHash: "00ab",
-		Txs: []model.Transaction{
+		Txs: []*model.Transaction{
 			{
 				Hash: "887d",
 			},
 		},
 		Nounce: 3,
-		Coinbase: model.Transaction{
+		Coinbase: &model.Transaction{
 			Hash: "00cd",
 		},
 	}
@@ -32,9 +32,9 @@ func TestGetBlockBytes(t *testing.T) {
 	expectedBlockBytes = append(expectedBlockBytes, Int64ToBytes(testBlock.Nounce)...)
 	preHashBytes, _ := HexToBytes(testBlock.PrevHash)
 	expectedBlockBytes = append(expectedBlockBytes, preHashBytes...)
-	txBytes, _ := GetTransactionBytes(&testBlock.Txs[0])
+	txBytes, _ := GetTransactionBytes(testBlock.Txs[0])
 	expectedBlockBytes = append(expectedBlockBytes, txBytes...)
-	coinbaseBytes, _ := GetTransactionBytes(&testBlock.Coinbase)
+	coinbaseBytes, _ := GetTransactionBytes(testBlock.Coinbase)
 	expectedBlockBytes = append(expectedBlockBytes, coinbaseBytes...)
 	assert.Equal(t, expectedBlockBytes, actualBlockBytes)
 }

@@ -24,9 +24,9 @@ func HandleTransaction(tx *model.Transaction, l *model.Ledger) error {
 
 	// Claim every input
 	for i := 0; i < len(tx.Inputs); i++ {
-		input := &tx.Inputs[i]
+		input := tx.Inputs[i]
 		utxo := CreateUtxoFromInput(input)
-		delete(l.L, utxo)
+		delete(l.L, model.GetUtxoLite(&utxo))
 	}
 
 	// Store every output
@@ -36,7 +36,7 @@ func HandleTransaction(tx *model.Transaction, l *model.Ledger) error {
 			PrevTxHash: tx.Hash,
 			Index:      int64(i),
 		}
-		l.L[utxo] = *output
+		l.L[model.GetUtxoLite(&utxo)] = *output
 	}
 
 	return nil
@@ -46,9 +46,9 @@ func HandleTransaction(tx *model.Transaction, l *model.Ledger) error {
 // Note that ledger will be changed directly, when passing ledger to this function, be sure to pass a deep copy.
 // MUTABLE:
 // * l
-func HandleTransactions(txs []model.Transaction, l *model.Ledger) error {
+func HandleTransactions(txs []*model.Transaction, l *model.Ledger) error {
 	for i := 0; i < len(txs); i++ {
-		tx := &txs[i]
+		tx := txs[i]
 		err := HandleTransaction(tx, l)
 		if err != nil {
 			return err

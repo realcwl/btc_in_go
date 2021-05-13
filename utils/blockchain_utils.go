@@ -13,7 +13,7 @@ import (
 // 3. Fill in transactions provided.
 // 4. Mine the block.
 // Also, **input ledger must be a deep copy because it will be change permanently.**
-func CreateNewBlock(txs []model.Transaction, prevHash string, reward float64, pk []byte, l *model.Ledger, difficulty int) (*model.Block, error) {
+func CreateNewBlock(txs []*model.Transaction, prevHash string, reward float64, pk []byte, l *model.Ledger, difficulty int) (*model.Block, error) {
 	// First calculate transaction fee.
 	fee, err := CalcTxFee(txs, l)
 	if err != nil {
@@ -71,7 +71,7 @@ func GetBlockBytes(block *model.Block) ([]byte, error) {
 
 	// convert transactions to bytes
 	for i := 0; i < len(block.Txs); i++ {
-		tx := &block.Txs[i]
+		tx := block.Txs[i]
 		txBytes, err := GetTransactionBytes(tx)
 		if err != nil {
 			return nil, err
@@ -80,7 +80,7 @@ func GetBlockBytes(block *model.Block) ([]byte, error) {
 	}
 
 	// covert coinbase to bytes
-	coinbaseBytes, err := GetTransactionBytes(&block.Coinbase)
+	coinbaseBytes, err := GetTransactionBytes(block.Coinbase)
 	if err != nil {
 		return nil, err
 	}

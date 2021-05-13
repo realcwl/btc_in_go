@@ -31,7 +31,7 @@ func GetOutputBytes(output *model.Output) []byte {
 func GetTransactionBytes(tx *model.Transaction) ([]byte, error) {
 	var data []byte
 	for i := 0; i < len(tx.Inputs); i++ {
-		input := &tx.Inputs[i]
+		input := tx.Inputs[i]
 		inputData, err := GetInputBytes(input, true /*withSig=*/)
 		if err != nil {
 			return nil, err
@@ -40,7 +40,7 @@ func GetTransactionBytes(tx *model.Transaction) ([]byte, error) {
 	}
 
 	for i := 0; i < len(tx.Outputs); i++ {
-		output := &tx.Outputs[i]
+		output := tx.Outputs[i]
 		outputData := GetOutputBytes(output)
 		data = append(data, outputData...)
 	}
@@ -59,7 +59,7 @@ func GetInputDataToSignByIndex(t *model.Transaction, index int) ([]byte, error) 
 	if len(t.Inputs)-1 < index {
 		return nil, errors.New("index is out of the range")
 	}
-	input := &t.Inputs[index]
+	input := t.Inputs[index]
 	// Don't include signature since we haven't signed it yet.
 	inputData, err := GetInputBytes(input, false /*withSig=*/)
 	if err != nil {
@@ -68,7 +68,7 @@ func GetInputDataToSignByIndex(t *model.Transaction, index int) ([]byte, error) 
 	data = append(data, inputData...)
 
 	for i := 0; i < len(t.Outputs); i++ {
-		output := &t.Outputs[i]
+		output := t.Outputs[i]
 		outputData := GetOutputBytes(output)
 		data = append(data, outputData...)
 	}
@@ -96,13 +96,13 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 	}
 
 	// Store all seen UTXOs to avoid double spending.
-	seenUtxo := make(map[model.UTXO]bool)
+	seenUtxo := make(map[model.UTXOLite]bool)
 
 	for i := 0; i < len(tx.Inputs); i++ {
 		// Verify the input is using UTXO.
-		input := &tx.Inputs[i]
+		input := tx.Inputs[i]
 		inputUtxo := CreateUtxoFromInput(input)
-		output, ok := l.L[inputUtxo]
+		output, ok := l.L[model.GetUtxoLite(&inputUtxo)]
 		if !ok {
 			return fmt.Errorf("transaction input has been spent: %+v", *tx)
 		}
@@ -122,10 +122,10 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 		}
 
 		// No double spending.
-		if _, exist := seenUtxo[inputUtxo]; exist {
+		if _, exist := seenUtxo[model.GetUtxoLite(&inputUtxo)]; exist {
 			return fmt.Errorf("the input is a double spending: %+v", *input)
 		}
-		seenUtxo[inputUtxo] = true
+		seenUtxo[model.GetUtxoLite(&inputUtxo)] = true
 	}
 
 	for i := 0; i < len(tx.Outputs); i++ {
@@ -145,7 +145,7 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 
 // Calculate total transaction fee given transaction and ledger. This function will not
 // modify ledger.
-func CalcTxFee(txs []model.Transaction, l *model.Ledger) (float64, error) {
+func CalcTxFee(txs []*model.Transaction, l *model.Ledger) (float64, error) {
 	var fee float64
 	for i := 0; i < len(txs); i++ {
 		tx := txs[i]
@@ -155,9 +155,9 @@ func CalcTxFee(txs []model.Transaction, l *model.Ledger) (float64, error) {
 
 		for j := 0; i < len(tx.Inputs); j++ {
 			// Verify the input is using UTXO.
-			input := &tx.Inputs[j]
+			input := tx.Inputs[j]
 			inputUtxo := CreateUtxoFromInput(input)
-			output, ok := l.L[inputUtxo]
+			output, ok := l.L[model.GetUtxoLite(&inputUtxo)]
 			if !ok {
 				return 0.0, errors.New("unexpected error: doesn't find utxo in ledger")
 			}
@@ -165,7 +165,7 @@ func CalcTxFee(txs []model.Transaction, l *model.Ledger) (float64, error) {
 		}
 
 		for j := 0; i < len(tx.Outputs); j++ {
-			output := &tx.Outputs[j]
+			output := tx.Outputs[j]
 			totalOutput += output.Value
 		}
 
@@ -223,14 +223,14 @@ func IsValidCoinbase(tx *model.Transaction, maxFee float64) error {
 //Create a transaction with a single output, which is the miner's public key.
 // READONLY:
 // *pk
-func CreateCoinbaseTx(totalReward float64, pk []byte) model.Transaction {
-	tx := model.Transaction{
-		Outputs: []model.Output{{
+func CreateCoinbaseTx(totalReward float64, pk []byte) *model.Transaction {
+	tx := &model.Transaction{
+		Outputs: []*model.Output{{
 			Value:     totalReward,
 			PublicKey: pk,
 		}},
 	}
 	// Ignore error because tx can never be nil.
-	FillTxHash(&tx)
+	FillTxHash(tx)
 	return tx
 }
