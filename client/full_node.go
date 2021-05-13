@@ -1,6 +1,7 @@
 package client
 
 import (
+	"crypto/rsa"
 	"errors"
 	"sync"
 
@@ -16,13 +17,24 @@ type FullNode struct {
 	blockchain model.Blockchain
 	// Transaction pool it need to maintain. Incoming transaction are added to this pool.
 	txPool model.TransactionPool
-	// TODO(chenweilunster): Define peers for this blockchain.
-
+	// keys contain private key and public key for this fullnode. Although we mostly care about public key.
+	keys rsa.PrivateKey
+	// Peers in the network.
+	// TODO(chenweilunster): Add this member.
 	// Blockchain config.
 	config config.AppConfig
-
 	// A single mutex for changing internal state.
 	m sync.RWMutex
+}
+
+// Create a brand new full node.
+func NewFullNode(c config.AppConfig) *FullNode {
+	return nil
+}
+
+// Create a new block with all transactions in the provided transaction pool.
+func (f *FullNode) CreateNewBlock() error {
+	return nil
 }
 
 // Handle the new block received.

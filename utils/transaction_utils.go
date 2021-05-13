@@ -44,7 +44,7 @@ func GetTransactionBytes(tx *model.Transaction) ([]byte, error) {
 		outputData := GetOutputBytes(output)
 		data = append(data, outputData...)
 	}
-	hashBytes, err := HexToBytes(t.Hash)
+	hashBytes, err := HexToBytes(tx.Hash)
 	if err != nil {
 		return nil, err
 	}

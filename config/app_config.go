@@ -8,4 +8,6 @@ type AppConfig struct {
 	COINBASE_REWARD float64
 	// How deep a block is confirmed. Aka how many block need to be after this block to confirm a block.
 	CONFIRMATION int
+	// Which port to listen to TCP connections.
+	PORT int
 }
