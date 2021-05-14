@@ -2,6 +2,8 @@ package client
 
 import (
 	"crypto/rsa"
+	"log"
+	"os"
 
 	"github.com/Luismorlan/btc_in_go/model"
 	"github.com/Luismorlan/btc_in_go/utils"
@@ -50,7 +52,7 @@ func CreatePendingTransaction(wallet *Wallet, outputs []*model.Output) (*model.T
 		Inputs:  inputs,
 		Outputs: outputs,
 	}
-
+	// sign inputs with own private key
 	for i := 0; i < len(inputs); i++ {
 		toSignMsg, err := utils.GetInputDataToSignByIndex(&pendingTransaction, i)
 		if err != nil {
@@ -65,7 +67,11 @@ func CreatePendingTransaction(wallet *Wallet, outputs []*model.Output) (*model.T
 	if err != nil {
 		return &model.Transaction{}, nil
 	}
-
+	// get Hash for transaction
 	pendingTransaction.Hash = string(utils.SHA256(transactionBytes))
 	return &pendingTransaction, nil
+}
+
+func main() {
+	log.Println(os.Args[1:])
 }
