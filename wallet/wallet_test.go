@@ -1,4 +1,4 @@
-package client
+package wallet
 
 import (
 	"crypto/rand"
@@ -22,8 +22,8 @@ func GetTestWallet() Wallet {
 	}
 
 	return Wallet{
-		keys: privateKey,
-		utxos: map[model.UTXOLite]*model.Output{
+		Keys: privateKey,
+		UTXOs: map[model.UTXOLite]*model.Output{
 			utxos: &output,
 		},
 	}
@@ -47,10 +47,9 @@ func TestCreatePendingTransaction(t *testing.T) {
 		PrevTxHash: "2334ad",
 		Index:      5,
 	}
-
 	selfOutput := &model.Output{
 		Value:     40,
-		PublicKey: utils.PublicKeyToBytes(&testWallet.keys.PublicKey),
+		PublicKey: utils.PublicKeyToBytes(&testWallet.Keys.PublicKey),
 	}
 	expectedOutputs := testOutputs
 	expectedOutputs = append(expectedOutputs, selfOutput)
@@ -61,5 +60,5 @@ func TestCreatePendingTransaction(t *testing.T) {
 	}
 	expectedMsg, _ := utils.GetInputDataToSignByIndex(&expectedPendingTx, 0)
 
-	assert.True(t, utils.Verify(expectedMsg, &testWallet.keys.PublicKey, actualSignature))
+	assert.True(t, utils.Verify(expectedMsg, &testWallet.Keys.PublicKey, actualSignature))
 }

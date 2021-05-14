@@ -1,9 +1,7 @@
-package client
+package wallet
 
 import (
 	"crypto/rsa"
-	"log"
-	"os"
 
 	"github.com/Luismorlan/btc_in_go/model"
 	"github.com/Luismorlan/btc_in_go/utils"
@@ -11,9 +9,10 @@ import (
 
 // User signs and sends transactions to network.
 type Wallet struct {
-	keys       *rsa.PrivateKey
-	fullNodeIp string
-	utxos      map[model.UTXOLite]*model.Output
+	Keys         *rsa.PrivateKey
+	FullNodeIp   string
+	FullNodePort string
+	UTXOs        map[model.UTXOLite]*model.Output
 }
 
 // Create a pending transaction to transfer money to users with public key
@@ -26,14 +25,14 @@ func CreatePendingTransaction(wallet *Wallet, outputs []*model.Output) (*model.T
 	// Total money from all UTXOs
 	var totalValue = 0.0
 	// building inputs for pending transaction
-	for utxo := range wallet.utxos {
+	for utxo := range wallet.UTXOs {
 		input := &model.Input{
 			PrevTxHash: utxo.PrevTxHash,
 			Index:      utxo.Index,
 		}
 
 		inputs = append(inputs, input)
-		totalValue += float64(wallet.utxos[utxo].Value)
+		totalValue += float64(wallet.UTXOs[utxo].Value)
 	}
 	// Total amount of money will be transferred to others
 	var totalTransferValue = 0.0
@@ -44,7 +43,7 @@ func CreatePendingTransaction(wallet *Wallet, outputs []*model.Output) (*model.T
 	// Output with amount of money left after transfer
 	selfOutput := model.Output{
 		Value:     (totalValue - totalTransferValue),
-		PublicKey: utils.PublicKeyToBytes(&wallet.keys.PublicKey),
+		PublicKey: utils.PublicKeyToBytes(&wallet.Keys.PublicKey),
 	}
 	outputs = append(outputs, &selfOutput)
 	// build pending transaction with inputs and outputs
@@ -58,7 +57,7 @@ func CreatePendingTransaction(wallet *Wallet, outputs []*model.Output) (*model.T
 		if err != nil {
 			return &model.Transaction{}, nil
 		}
-		inputs[i].Signature, err = utils.Sign(toSignMsg, wallet.keys)
+		inputs[i].Signature, err = utils.Sign(toSignMsg, wallet.Keys)
 		if err != nil {
 			return &model.Transaction{}, nil
 		}
@@ -70,8 +69,4 @@ func CreatePendingTransaction(wallet *Wallet, outputs []*model.Output) (*model.T
 	// get Hash for transaction
 	pendingTransaction.Hash = string(utils.SHA256(transactionBytes))
 	return &pendingTransaction, nil
-}
-
-func main() {
-	log.Println(os.Args[1:])
 }
