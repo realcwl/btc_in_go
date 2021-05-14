@@ -37,7 +37,7 @@ type BlockWrapper struct {
 	// height in the blockchain.
 	Height int64
 	// Ledger at that node.
-	L Ledger
+	L *Ledger
 }
 
 type Blockchain struct {
@@ -48,25 +48,24 @@ type Blockchain struct {
 }
 
 // Create a new blockchain
-func NewBlockChain() Blockchain {
+func NewBlockChain() *Blockchain {
 	// Create a genesis block that has only hash "0"
-	genesisBlock := &Block{
+	genesisBlock := Block{
 		Hash: "0",
 	}
 	genesisBlockWrapper := BlockWrapper{
-		B:      genesisBlock,
+		B:      &genesisBlock,
 		Height: 0,
 		L:      NewLedger(),
 	}
-	bc := Blockchain{
+	return &Blockchain{
 		Tail:  &genesisBlockWrapper,
 		Chain: map[string]*BlockWrapper{"0": &genesisBlockWrapper},
 	}
-	return bc
 }
 
-func NewLedger() Ledger {
-	return Ledger{
+func NewLedger() *Ledger {
+	return &Ledger{
 		L: make(map[UTXOLite]*Output),
 	}
 }
@@ -74,12 +73,12 @@ func NewLedger() Ledger {
 type TransactionPool struct {
 	// TransactionPool contains all pending transactions that haven't be checked in the blockchain.
 	// Key is the hex of transaction's hash, value is the transaction.
-	TxPool map[string]Transaction
+	TxPool map[string]*Transaction
 }
 
 // NewTransactionPool creates a new transaction pool with no transaction at all.
-func NewTransactionPool() TransactionPool {
-	return TransactionPool{
-		TxPool: make(map[string]Transaction),
+func NewTransactionPool() *TransactionPool {
+	return &TransactionPool{
+		TxPool: make(map[string]*Transaction),
 	}
 }

@@ -234,3 +234,12 @@ func CreateCoinbaseTx(totalReward float64, pk []byte) *model.Transaction {
 	FillTxHash(tx)
 	return tx
 }
+
+// Return all transactions in the pool
+func GetAllTxsInPool(txPool *model.TransactionPool) []*model.Transaction {
+	txs := make([]*model.Transaction, len(txPool.TxPool))
+	for _, tx := range txPool.TxPool {
+		txs = append(txs, tx)
+	}
+	return txs
+}

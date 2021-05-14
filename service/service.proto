@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+option go_package = "github.com/Luismorlan/btc_in_go/service/service";
+
+import "model/transaction.proto";
+import "model/block.proto";
+import "model/utxo.proto";
+
+// A fullnode must implement all interfaces.
+service FullNodeService {
+  // SetTransaction takes in a transaction posted by either self or client,
+  // process and broadcast to other full node.
+  rpc SetTransaction(SetTransactionRequest) returns (SetTransactionResponse) {}
+
+  // When a fullnode discovered a new block, it announce the block to other fullnode.
+  rpc SetBlock(SetBlockRequest) returns (SetBlockResponse) {}
+
+  // Return balance for any client that want to query with their public key in the
+  // form of UTXO to Output pairs.
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse) {}
+}
+
+message SetTransactionRequest {
+  // Transaction to be sent to fullnode.
+  Transaction tx = 1;
+}
+
+message SetTransactionResponse {}
+
+message SetBlockRequest {
+  Block block = 1;
+}
+
+message SetBlockResponse {}
+
+message GetBalanceRequest {
+  bytes public_key = 1;
+}
+
+message UtxoOutputPair {
+  // UTXO for the output.
+  UTXO utxo = 1;
+  // The actual output this UTOX reference to.
+  Output output = 2;
+}
+
+message GetBalanceResponse {
+  // The mapping between UTXO to actual output.
+  repeated UtxoOutputPair utxo_output_pairs = 1;
+}
