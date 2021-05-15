@@ -26,6 +26,8 @@ type FullNodeServiceClient interface {
 	// Return balance for any client that want to query with their public key in the
 	// form of UTXO to Output pairs.
 	GetBalance(ctx context.Context, in *GetBalanceRequest, opts ...grpc.CallOption) (*GetBalanceResponse, error)
+	// Add a new peer to this full node and create a bidirection connection.
+	AddPeer(ctx context.Context, in *AddPeerRequest, opts ...grpc.CallOption) (*AddPeerResponse, error)
 }
 
 type fullNodeServiceClient struct {
@@ -63,6 +65,15 @@ func (c *fullNodeServiceClient) GetBalance(ctx context.Context, in *GetBalanceRe
 	return out, nil
 }
 
+func (c *fullNodeServiceClient) AddPeer(ctx context.Context, in *AddPeerRequest, opts ...grpc.CallOption) (*AddPeerResponse, error) {
+	out := new(AddPeerResponse)
+	err := c.cc.Invoke(ctx, "/FullNodeService/AddPeer", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FullNodeServiceServer is the server API for FullNodeService service.
 // All implementations must embed UnimplementedFullNodeServiceServer
 // for forward compatibility
@@ -75,6 +86,8 @@ type FullNodeServiceServer interface {
 	// Return balance for any client that want to query with their public key in the
 	// form of UTXO to Output pairs.
 	GetBalance(context.Context, *GetBalanceRequest) (*GetBalanceResponse, error)
+	// Add a new peer to this full node and create a bidirection connection.
+	AddPeer(context.Context, *AddPeerRequest) (*AddPeerResponse, error)
 	mustEmbedUnimplementedFullNodeServiceServer()
 }
 
@@ -90,6 +103,9 @@ func (UnimplementedFullNodeServiceServer) SetBlock(context.Context, *SetBlockReq
 }
 func (UnimplementedFullNodeServiceServer) GetBalance(context.Context, *GetBalanceRequest) (*GetBalanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBalance not implemented")
+}
+func (UnimplementedFullNodeServiceServer) AddPeer(context.Context, *AddPeerRequest) (*AddPeerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddPeer not implemented")
 }
 func (UnimplementedFullNodeServiceServer) mustEmbedUnimplementedFullNodeServiceServer() {}
 
@@ -158,6 +174,24 @@ func _FullNodeService_GetBalance_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _FullNodeService_AddPeer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddPeerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FullNodeServiceServer).AddPeer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/FullNodeService/AddPeer",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FullNodeServiceServer).AddPeer(ctx, req.(*AddPeerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // FullNodeService_ServiceDesc is the grpc.ServiceDesc for FullNodeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -176,6 +210,10 @@ var FullNodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetBalance",
 			Handler:    _FullNodeService_GetBalance_Handler,
+		},
+		{
+			MethodName: "AddPeer",
+			Handler:    _FullNodeService_AddPeer_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

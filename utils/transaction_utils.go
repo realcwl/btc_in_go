@@ -92,7 +92,7 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 		return err
 	}
 	if BytesToHex(SHA256(txBytes)) != tx.Hash {
-		return fmt.Errorf("transaction contains a invalid hash: %+v", *tx)
+		return fmt.Errorf("transaction contains a invalid hash: %+v", tx.String())
 	}
 
 	// Store all seen UTXOs to avoid double spending.
@@ -104,7 +104,7 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 		inputUtxo := CreateUtxoFromInput(input)
 		output, ok := l.L[model.GetUtxoLite(&inputUtxo)]
 		if !ok {
-			return fmt.Errorf("transaction input has been spent: %+v", *tx)
+			return fmt.Errorf("transaction input has been spent: %+v", tx.String())
 		}
 		totalInput += output.Value
 
@@ -123,7 +123,7 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 
 		// No double spending.
 		if _, exist := seenUtxo[model.GetUtxoLite(&inputUtxo)]; exist {
-			return fmt.Errorf("the input is a double spending: %+v", *input)
+			return fmt.Errorf("the input is a double spending: %+v", input.String())
 		}
 		seenUtxo[model.GetUtxoLite(&inputUtxo)] = true
 	}
@@ -204,7 +204,7 @@ func IsValidCoinbase(tx *model.Transaction, maxFee float64) error {
 		return err
 	}
 	if BytesToHex(SHA256(txBytes)) != tx.Hash {
-		return fmt.Errorf("coinbase transaction contains a invalid hash: %+v", *tx)
+		return fmt.Errorf("coinbase transaction contains a invalid hash: %+v", tx.String())
 	}
 
 	// Should contains 0 input and 1 output.

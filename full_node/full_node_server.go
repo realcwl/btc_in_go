@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/Luismorlan/btc_in_go/commands"
 	"github.com/Luismorlan/btc_in_go/config"
 	"github.com/Luismorlan/btc_in_go/service"
 	"github.com/Luismorlan/btc_in_go/utils"
@@ -60,8 +61,23 @@ func (sev *FullNodeServer) SetTransaction(con context.Context, req *service.SetT
 	return &service.SetTransactionResponse{}, nil
 }
 
+// Mine one block and set that block.
+func (sev *FullNodeServer) Mine(ctl chan commands.Command) (commands.Command, error) {
+	b, c, err := sev.fullNode.CreateNewBlock(ctl)
+	if err != nil {
+		return c, err
+	}
+	// Not terminated by command nor mining failure, proceed to handle that block.
+	_, err = sev.SetBlockInternal(&service.SetBlockRequest{Block: b})
+	return commands.NewDefaultCommand(), err
+}
+
 // Handle the incoming block, if the block is valid, just broad cast it to other nodes.
 func (sev *FullNodeServer) SetBlock(con context.Context, req *service.SetBlockRequest) (*service.SetBlockResponse, error) {
+	return sev.SetBlockInternal(req)
+}
+
+func (sev *FullNodeServer) SetBlockInternal(req *service.SetBlockRequest) (*service.SetBlockResponse, error) {
 	block := req.Block
 	err := sev.fullNode.HandleNewBlock(block)
 	if err != nil {
@@ -73,7 +89,10 @@ func (sev *FullNodeServer) SetBlock(con context.Context, req *service.SetBlockRe
 		peer := sev.peers[i]
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		peer.client.SetBlock(ctx, &service.SetBlockRequest{Block: block})
+		_, err := peer.client.SetBlock(ctx, &service.SetBlockRequest{Block: block})
+		if err != nil {
+			log.Println(err)
+		}
 	}
 
 	return &service.SetBlockResponse{}, err

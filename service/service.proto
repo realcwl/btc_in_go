@@ -18,6 +18,9 @@ service FullNodeService {
   // Return balance for any client that want to query with their public key in the
   // form of UTXO to Output pairs.
   rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse) {}
+
+  // Add a new peer to this full node and create a bidirection connection.
+  rpc AddPeer(AddPeerRequest) returns (AddPeerResponse) {}
 }
 
 message SetTransactionRequest {
@@ -48,3 +51,14 @@ message GetBalanceResponse {
   // The mapping between UTXO to actual output.
   repeated UtxoOutputPair utxo_output_pairs = 1;
 }
+
+message NodeAddr {
+  string ip_addr = 1;
+  string port = 2;
+}
+
+message AddPeerRequest {
+  NodeAddr node_addr = 1;
+}
+
+message AddPeerResponse {}

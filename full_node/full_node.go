@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/Luismorlan/btc_in_go/commands"
 	"github.com/Luismorlan/btc_in_go/config"
 	"github.com/Luismorlan/btc_in_go/model"
 	"github.com/Luismorlan/btc_in_go/utils"
@@ -59,9 +60,11 @@ func (f *FullNode) GetTailLedgerSnapshot() *model.Ledger {
 	return l
 }
 
-// Create a new block with all transactions in the provided transaction pool.
+// Create a new block with all transactions in the provided transaction pool. CreateNewBlock
+// is a really long process and takes a long time to proccess.
 // This block must be created after the tail block in the blockchain.
-func (f *FullNode) CreateNewBlock() (*model.Block, error) {
+// cmd is a channel that interrupts the mining process at any time
+func (f *FullNode) CreateNewBlock(ctl chan commands.Command) (*model.Block, commands.Command, error) {
 	// Lock the transaction pool for reading.
 	f.m.RLock()
 	l := model.NewLedger()
@@ -71,8 +74,8 @@ func (f *FullNode) CreateNewBlock() (*model.Block, error) {
 	txs := utils.GetAllTxsInPool(f.txPool)
 	// Mining is a really heavy task
 	f.m.RUnlock()
-	block, err := utils.CreateNewBlock(txs, tail.B.Hash, f.config.COINBASE_REWARD, utils.PublicKeyToBytes(&f.keys.PublicKey), l, f.config.DIFFICULTY)
-	return block, err
+	block, c, err := utils.CreateNewBlock(txs, tail.B.Hash, f.config.COINBASE_REWARD, utils.PublicKeyToBytes(&f.keys.PublicKey), l, f.config.DIFFICULTY, ctl)
+	return block, c, err
 }
 
 // Handle the new block received.

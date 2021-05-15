@@ -3,7 +3,9 @@ package utils
 import (
 	"errors"
 	"log"
+	"time"
 
+	"github.com/Luismorlan/btc_in_go/commands"
 	"github.com/Luismorlan/btc_in_go/model"
 )
 
@@ -13,16 +15,16 @@ import (
 // 3. Fill in transactions provided.
 // 4. Mine the block.
 // Also, **input ledger must be a deep copy because it will be change permanently.**
-func CreateNewBlock(txs []*model.Transaction, prevHash string, reward float64, pk []byte, l *model.Ledger, difficulty int) (*model.Block, error) {
+func CreateNewBlock(txs []*model.Transaction, prevHash string, reward float64, pk []byte, l *model.Ledger, difficulty int, ctl chan commands.Command) (*model.Block, commands.Command, error) {
 	// First calculate transaction fee.
 	fee, err := CalcTxFee(txs, l)
 	if err != nil {
-		return nil, err
+		return nil, commands.NewDefaultCommand(), err
 	}
 
 	err = HandleTransactions(txs, l)
 	if err != nil {
-		return nil, err
+		return nil, commands.NewDefaultCommand(), err
 	}
 
 	block := model.Block{
@@ -31,27 +33,29 @@ func CreateNewBlock(txs []*model.Transaction, prevHash string, reward float64, p
 		Coinbase: CreateCoinbaseTx(reward+fee, pk),
 	}
 
-	err = Mine(&block, difficulty)
-	if err != nil {
-		return nil, err
-	}
-
-	return &block, nil
+	c, err := Mine(&block, difficulty, ctl)
+	return &block, c, err
 }
 
 // TODO(chenweilunster): Mine a block, fill the nounce and hash given the current difficulty setting.
 // difficulty - how many leading zeros
-func Mine(block *model.Block, difficulty int) error {
-
+// Always listen for command interruption and stop mining at any time.
+func Mine(block *model.Block, difficulty int, ctl chan commands.Command) (commands.Command, error) {
 	for i := 0; i < int(^uint(0)>>1); i++ {
-		block.Nounce = int64(i)
-		isMatched, digest := MatchDifficulty(block, difficulty)
-		if isMatched {
-			block.Hash = digest
-			return nil
+		time.Sleep(time.Second)
+		select {
+		case c := <-ctl:
+			return c, errors.New("terminated by command")
+		default:
+			block.Nounce = int64(i)
+			isMatched, digest := MatchDifficulty(block, difficulty)
+			if isMatched {
+				block.Hash = digest
+				return commands.NewDefaultCommand(), nil
+			}
 		}
 	}
-	return errors.New("failed to find any nounce")
+	return commands.NewDefaultCommand(), errors.New("failed to find any nounce")
 }
 
 // TODO : get block in bytes format

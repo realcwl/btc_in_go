@@ -3,6 +3,7 @@ package utils
 import (
 	"testing"
 
+	"github.com/Luismorlan/btc_in_go/commands"
 	"github.com/Luismorlan/btc_in_go/model"
 	"github.com/stretchr/testify/assert"
 )
@@ -42,12 +43,32 @@ func TestGetBlockBytes(t *testing.T) {
 func TestMine(t *testing.T) {
 	testDifficulty := 1
 	testBlock := createTestBlock()
+	testChan := make(chan commands.Command)
 
-	actualErr := Mine(&testBlock, testDifficulty)
+	_, actualErr := Mine(&testBlock, testDifficulty, testChan)
 	assert.Nil(t, actualErr)
 	expectedMatched, _ := MatchDifficulty(&testBlock, testDifficulty)
 	assert.True(t, expectedMatched)
 }
+
+func TestMineInterruption(t *testing.T) {
+	// Make a really difficult hash difficulty that's impossible to solve.
+	testDifficulty := 100
+	testBlock := createTestBlock()
+	testChan := make(chan commands.Command)
+
+	go func() {
+		c, actualErr := Mine(&testBlock, testDifficulty, testChan)
+		assert.Equal(t, c, commands.Command{
+			Op: commands.STOP,
+		})
+		assert.Nil(t, actualErr)
+	}()
+	testChan <- commands.Command{
+		Op: commands.STOP,
+	}
+}
+
 func TestMatchDifficulty(t *testing.T) {
 	testDifficulty := 8
 	testBlock := createTestBlock()
