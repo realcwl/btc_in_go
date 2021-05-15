@@ -51,6 +51,7 @@ func Mine(block *model.Block, difficulty int, ctl chan commands.Command) (comman
 			isMatched, digest := MatchDifficulty(block, difficulty)
 			if isMatched {
 				block.Hash = digest
+				log.Println("successfully mined a block: ", digest)
 				return commands.NewDefaultCommand(), nil
 			}
 		}
@@ -58,7 +59,7 @@ func Mine(block *model.Block, difficulty int, ctl chan commands.Command) (comman
 	return commands.NewDefaultCommand(), errors.New("failed to find any nounce")
 }
 
-// TODO : get block in bytes format
+// Get block bytes without its hash.
 func GetBlockBytes(block *model.Block) ([]byte, error) {
 	var rawBlock []byte
 
@@ -76,7 +77,7 @@ func GetBlockBytes(block *model.Block) ([]byte, error) {
 	// convert transactions to bytes
 	for i := 0; i < len(block.Txs); i++ {
 		tx := block.Txs[i]
-		txBytes, err := GetTransactionBytes(tx)
+		txBytes, err := GetTransactionBytes(tx, true /*withHash*/)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +85,7 @@ func GetBlockBytes(block *model.Block) ([]byte, error) {
 	}
 
 	// covert coinbase to bytes
-	coinbaseBytes, err := GetTransactionBytes(block.Coinbase)
+	coinbaseBytes, err := GetTransactionBytes(block.Coinbase, true /*withHash*/)
 	if err != nil {
 		return nil, err
 	}

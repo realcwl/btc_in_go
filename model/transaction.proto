@@ -14,7 +14,7 @@ message Input  {
 
 message Output {
   // how much value to transfer.
-  double Value = 1;
+  double value = 1;
   // Public key of the receiver, in the form of bytes.
   bytes public_key = 2;
 }

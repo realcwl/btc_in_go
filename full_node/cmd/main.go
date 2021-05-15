@@ -119,11 +119,11 @@ func ParseAppConfig(path string) config.AppConfig {
 	c := config.AppConfig{}
 	yamlFile, err := ioutil.ReadFile(path)
 	if err != nil {
-		log.Fatal("yamlFile.Get err %v ", err)
+		log.Fatal("yamlFile. get err: ", err.Error())
 	}
 	err = yaml.Unmarshal(yamlFile, &c)
 	if err != nil {
-		log.Fatal("Unmarshal: %v", err)
+		log.Fatal("Unmarshal: ", err)
 	}
 	return c
 }

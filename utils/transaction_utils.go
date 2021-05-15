@@ -28,8 +28,10 @@ func GetOutputBytes(output *model.Output) []byte {
 }
 
 // Concat all inputs (including signature) and outputs raw data in byte slices.
-func GetTransactionBytes(tx *model.Transaction) ([]byte, error) {
+// withHash specifies whether TX hash should be included or not.
+func GetTransactionBytes(tx *model.Transaction, withHash bool) ([]byte, error) {
 	var data []byte
+
 	for i := 0; i < len(tx.Inputs); i++ {
 		input := tx.Inputs[i]
 		inputData, err := GetInputBytes(input, true /*withSig=*/)
@@ -44,11 +46,15 @@ func GetTransactionBytes(tx *model.Transaction) ([]byte, error) {
 		outputData := GetOutputBytes(output)
 		data = append(data, outputData...)
 	}
-	hashBytes, err := HexToBytes(tx.Hash)
-	if err != nil {
-		return nil, err
+
+	if withHash {
+		hashBytes, err := HexToBytes(tx.Hash)
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, hashBytes...)
 	}
-	data = append(data, hashBytes...)
+
 	return data, nil
 }
 
@@ -87,7 +93,7 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 	var totalOutput = 0.0
 
 	// Tx hash should match.
-	txBytes, err := GetTransactionBytes(tx)
+	txBytes, err := GetTransactionBytes(tx, false /*withHash*/)
 	if err != nil {
 		return err
 	}
@@ -184,7 +190,7 @@ func FillTxHash(tx *model.Transaction) error {
 	if tx == nil {
 		return errors.New("input transaction to hash cannot be nil")
 	}
-	data, err := GetTransactionBytes(tx)
+	data, err := GetTransactionBytes(tx, false /*withHash*/)
 	if err != nil {
 		return err
 	}
@@ -199,7 +205,7 @@ func FillTxHash(tx *model.Transaction) error {
 // * tx
 func IsValidCoinbase(tx *model.Transaction, maxFee float64) error {
 	// Tx hash should match.
-	txBytes, err := GetTransactionBytes(tx)
+	txBytes, err := GetTransactionBytes(tx, false /*withHash*/)
 	if err != nil {
 		return err
 	}

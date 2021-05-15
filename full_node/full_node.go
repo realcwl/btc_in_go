@@ -107,7 +107,7 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) error {
 	prevHash := pendingBlock.PrevHash
 	prevBlockWrapper, ok := f.blockchain.Chain[prevHash]
 	if !ok {
-		return errors.New("parent block not found in blockchain")
+		return errors.New("parent block not found in blockchain, parent block hash: " + prevHash)
 	}
 
 	// Calculate its parent depth in the chain. If parent is greater than confirmation, it means

@@ -33,9 +33,9 @@ func TestGetBlockBytes(t *testing.T) {
 	expectedBlockBytes = append(expectedBlockBytes, Int64ToBytes(testBlock.Nounce)...)
 	preHashBytes, _ := HexToBytes(testBlock.PrevHash)
 	expectedBlockBytes = append(expectedBlockBytes, preHashBytes...)
-	txBytes, _ := GetTransactionBytes(testBlock.Txs[0])
+	txBytes, _ := GetTransactionBytes(testBlock.Txs[0], true)
 	expectedBlockBytes = append(expectedBlockBytes, txBytes...)
-	coinbaseBytes, _ := GetTransactionBytes(testBlock.Coinbase)
+	coinbaseBytes, _ := GetTransactionBytes(testBlock.Coinbase, true)
 	expectedBlockBytes = append(expectedBlockBytes, coinbaseBytes...)
 	assert.Equal(t, expectedBlockBytes, actualBlockBytes)
 }
@@ -58,15 +58,19 @@ func TestMineInterruption(t *testing.T) {
 	testChan := make(chan commands.Command)
 
 	go func() {
-		c, actualErr := Mine(&testBlock, testDifficulty, testChan)
-		assert.Equal(t, c, commands.Command{
+		testChan <- commands.Command{
 			Op: commands.STOP,
-		})
-		assert.Nil(t, actualErr)
+		}
 	}()
-	testChan <- commands.Command{
+
+	c, actualErr := Mine(&testBlock, testDifficulty, testChan)
+	assert.Equal(t, c, commands.Command{
 		Op: commands.STOP,
-	}
+	})
+	assert.NotNil(t, actualErr)
+	assert.Equal(t, c, commands.Command{
+		Op: commands.STOP,
+	})
 }
 
 func TestMatchDifficulty(t *testing.T) {
@@ -85,6 +89,7 @@ func TestMatchDifficulty(t *testing.T) {
 	assert.Equal(t, expectedRes, actualMatched)
 	assert.Equal(t, expectedDigest, actualDigest)
 }
+
 func TestByteHasLeadingZeros(t *testing.T) {
 	testByte := []byte{2, 45, 40}
 	assert.True(t, ByteHasLeadingZeros(testByte, 6))
