@@ -62,7 +62,7 @@ func CreatePendingTransaction(wallet *Wallet, outputs []*model.Output) (*model.T
 			return &model.Transaction{}, nil
 		}
 	}
-	transactionBytes, err := utils.GetTransactionBytes(&pendingTransaction)
+	transactionBytes, err := utils.GetTransactionBytes(&pendingTransaction, false)
 	if err != nil {
 		return &model.Transaction{}, nil
 	}
