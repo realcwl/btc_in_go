@@ -29,3 +29,17 @@ func Float64ToBytes(f float64) []byte {
 	binary.BigEndian.PutUint64(b[:], math.Float64bits(f))
 	return b
 }
+
+func IsSameBytes(lhs []byte, rhs []byte) bool {
+	if len(lhs) != len(rhs) {
+		return false
+	}
+
+	for i := 0; i < len(lhs); i++ {
+		if lhs[i] != rhs[i] {
+			return false
+		}
+	}
+
+	return true
+}

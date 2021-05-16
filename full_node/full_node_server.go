@@ -8,6 +8,7 @@ import (
 
 	"github.com/Luismorlan/btc_in_go/commands"
 	"github.com/Luismorlan/btc_in_go/config"
+	"github.com/Luismorlan/btc_in_go/model"
 	"github.com/Luismorlan/btc_in_go/service"
 	"github.com/Luismorlan/btc_in_go/utils"
 	"github.com/Luismorlan/btc_in_go/visualize"
@@ -60,6 +61,22 @@ func (sev *FullNodeServer) SetTransaction(con context.Context, req *service.SetT
 	}
 
 	return &service.SetTransactionResponse{}, nil
+}
+
+// Return all utxo the public key owned.
+func (sev *FullNodeServer) GetBalance(ctx context.Context, req *service.GetBalanceRequest) (*service.GetBalanceResponse, error) {
+	pk := req.PublicKey
+	l := sev.fullNode.GetUtxoForPublicKey(pk)
+	res := service.GetBalanceResponse{}
+	for utxoLite, output := range l.L {
+		utxo := model.GetUtxo(&utxoLite)
+		pair := service.UtxoOutputPair{
+			Utxo:   &utxo,
+			Output: output,
+		}
+		res.UtxoOutputPairs = append(res.UtxoOutputPairs, &pair)
+	}
+	return &res, nil
 }
 
 // Mine one block and set that block.

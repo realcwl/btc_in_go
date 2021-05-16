@@ -23,6 +23,14 @@ func GetUtxoLite(utxo *UTXO) UTXOLite {
 	}
 }
 
+// Convert back to UTXO
+func GetUtxo(utxoLite *UTXOLite) UTXO {
+	return UTXO{
+		PrevTxHash: utxoLite.PrevTxHash,
+		Index:      utxoLite.Index,
+	}
+}
+
 // Ledger is a map from UTXO to actual output on transaction. Each fullnode need to
 // maintain a ledger.
 type Ledger struct {

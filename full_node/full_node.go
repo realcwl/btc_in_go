@@ -98,6 +98,18 @@ func (f *FullNode) GetTail() *model.BlockWrapper {
 	return f.blockchain.Tail
 }
 
+// Create a snapshot of the given public key's ledger, return all UTXO it has.
+func (f *FullNode) GetUtxoForPublicKey(pk []byte) model.Ledger {
+	l := f.GetTailLedgerSnapshot()
+	res := model.NewLedger()
+	for utxoLite, output := range l.L {
+		if utils.IsSameBytes(pk, output.PublicKey) {
+			res.L[utxoLite] = output
+		}
+	}
+	return *res
+}
+
 // Handle the new block received.
 // This function should:
 // 1. Validate the block.
