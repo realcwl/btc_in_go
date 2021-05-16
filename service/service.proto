@@ -53,11 +53,16 @@ message GetBalanceResponse {
 }
 
 message NodeAddr {
+  // TODO(chenweilunster): This currently is always 127.0.0.1
+  // the next step is to change this to be working on the internet.
   string ip_addr = 1;
   string port = 2;
 }
 
+// AddPeerRequest establish a bidirectional connection between peers.
 message AddPeerRequest {
+  // This is the incoming address of the full node,
+  // not the peers that's being added.
   NodeAddr node_addr = 1;
 }
 

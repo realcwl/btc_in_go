@@ -109,6 +109,17 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 				// because we don't want to block HandleCommand in any situation.
 				ctl <- c
 			}()
+		case commands.ADD_PEER:
+			// Add peer to be local client.
+			err := server.AddMutualConnection(c.Args[0], c.Args[1])
+			if err != nil {
+				log.Println("cannot add new peer: ", err)
+			}
+		case commands.LIST_PEER:
+			for _, p := range server.GetAllPeers() {
+				fmt.Println(p)
+			}
+			fmt.Print("> ")
 		case commands.SHOW:
 			v, err := strconv.Atoi(c.Args[0])
 			if err != nil {
@@ -135,12 +146,34 @@ func ParseAppConfig(path string) config.AppConfig {
 	return c
 }
 
+// Get local ipv6 unicast address, exit if not found.
+func localAddress() full_node.Address {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// find a ipv6 global unicast address.
+	for _, a := range addrs {
+		if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() == nil && ipnet.IP.IsGlobalUnicast() {
+			return full_node.Address{
+				IpAddr: ipnet.IP.String(),
+				Port:   *port,
+			}
+		}
+	}
+
+	log.Fatalln("doesn't find any ipv6 unicast address to listen to")
+	return full_node.Address{}
+}
+
 func main() {
 	flag.Parse()
 
 	cfg := ParseAppConfig(*configPath)
+	la := localAddress()
 
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%s", *port))
+	lis, err := net.Listen("tcp", fmt.Sprintf("[%s]:%s", la.IpAddr, la.Port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -151,11 +184,11 @@ func main() {
 	cmd := make(chan commands.Command)
 
 	// Create a server with peer, config and a command channel to interrupt mining when tail changes.
-	server := full_node.NewFullNodeServer(cfg, []full_node.Peer{}, cmd)
+	server := full_node.NewFullNodeServer(cfg, []full_node.Peer{}, localAddress(), cmd)
 	grpcServer := grpc.NewServer()
 	service.RegisterFullNodeServiceServer(grpcServer, server)
 	log.Println(cfg)
-	log.Println("Starting to serve at port:", *port)
+	log.Printf("Starting to serve at endpoint: %s:%s", la.IpAddr, la.Port)
 
 	// Create 2 routine dedicated for mining.
 	// cmd: Parse string input and create command.

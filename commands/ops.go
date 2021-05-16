@@ -2,6 +2,7 @@ package commands
 
 import (
 	"errors"
+	"net"
 	"regexp"
 	"strconv"
 	"strings"
@@ -9,7 +10,6 @@ import (
 
 type Operation int
 
-const IP_REGEX = "(?:[0-9]{1,3}\\.){3}[0-9]{1,3}"
 const PORT_REGEX = "[0-9]{4,5}"
 
 const (
@@ -24,6 +24,8 @@ const (
 	ADD_PEER
 	// Renove a peer by ip and port.
 	REMOVE_PEER
+	// List all peers.
+	LIST_PEER
 	// Show the blockchain.
 	SHOW
 )
@@ -36,7 +38,7 @@ type Command struct {
 
 func (c Command) IsValid() bool {
 	switch c.Op {
-	case START, RESTART, STOP:
+	case START, RESTART, STOP, LIST_PEER:
 		return len(c.Args) == 0
 	case ADD_PEER, REMOVE_PEER:
 		if len(c.Args) != 2 {
@@ -44,9 +46,11 @@ func (c Command) IsValid() bool {
 		}
 		ipAddr := c.Args[0]
 		port := c.Args[1]
-		ipRegex, _ := regexp.Compile(IP_REGEX)
+		ip := net.ParseIP(ipAddr)
+
 		portRegex, _ := regexp.Compile(PORT_REGEX)
-		return ipRegex.Match([]byte(ipAddr)) && portRegex.Match([]byte(port))
+		// Is a valid global unicast ipv6 address and has valid port.
+		return ip != nil && ip.To4() == nil && ip.IsGlobalUnicast() && portRegex.Match([]byte(port))
 	case SHOW:
 		if len(c.Args) != 1 {
 			return false
@@ -80,6 +84,8 @@ func CreateCommand(s string) (Command, error) {
 		cmd.Op = ADD_PEER
 	case "remove_peer":
 		cmd.Op = REMOVE_PEER
+	case "list_peer":
+		cmd.Op = LIST_PEER
 	case "show":
 		cmd.Op = SHOW
 	}

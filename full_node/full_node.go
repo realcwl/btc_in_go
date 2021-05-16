@@ -3,6 +3,7 @@ package full_node
 import (
 	"crypto/rsa"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/Luismorlan/btc_in_go/commands"
@@ -51,7 +52,7 @@ func (f *FullNode) AddTransactionToPool(tx *model.Transaction) error {
 	defer f.m.Unlock()
 
 	if _, exist := f.txPool.TxPool[tx.Hash]; exist {
-		return errors.New("existing transaction, will not process")
+		return fmt.Errorf("existing transaction, will not process: %s", tx.Hash)
 	}
 	f.txPool.TxPool[tx.Hash] = tx
 	return nil
@@ -139,6 +140,11 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, error) {
 	// Lock mutex because we are changing the state of blockchain.
 	f.m.Lock()
 	defer f.m.Unlock()
+
+	// Block should not already exist in blockchain.
+	if _, ok := f.blockchain.Chain[pendingBlock.Hash]; ok {
+		return false, fmt.Errorf("block already exist in the chain: %s", pendingBlock.Hash)
+	}
 
 	tailChange := false
 	// Difficulty and hash should match.
