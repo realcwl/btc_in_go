@@ -119,27 +119,33 @@ func (f *FullNode) GetUtxoForPublicKey(pk []byte) model.Ledger {
 //   d. Block is not too deep.
 //   e. Total input should be <= reward + tx fee
 // 2. Add to blockchain.
-// Return false if the block is invalid.
-func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) error {
+//
+// This function returns 2 things:
+// 1. A boolean flag indicating whether a tail change happens. This is needed
+// because depending on the config we might want to remine the blocks on tail change
+// in order not to waste time mining on a deprecated tail.
+// 2. An error indicating any error happened during mining.
+func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, error) {
 	// Lock mutex because we are changing the state of blockchain.
 	f.m.Lock()
 	defer f.m.Unlock()
 
+	tailChange := false
 	// Difficulty and hash should match.
 	utils.MatchDifficulty(pendingBlock, f.config.DIFFICULTY)
 	blockBytes, err := utils.GetBlockBytes(pendingBlock)
 	if err != nil {
-		return err
+		return tailChange, err
 	}
 	if utils.BytesToHex(utils.SHA256(blockBytes)) != pendingBlock.Hash {
-		return errors.New("block hash is invalid")
+		return tailChange, errors.New("block hash is invalid")
 	}
 
 	// previous block should exist in blockchain.
 	prevHash := pendingBlock.PrevHash
 	prevBlockWrapper, ok := f.blockchain.Chain[prevHash]
 	if !ok {
-		return errors.New("parent block not found in blockchain, parent block hash: " + prevHash)
+		return tailChange, errors.New("parent block not found in blockchain, parent block hash: " + prevHash)
 	}
 
 	// Calculate its parent depth in the chain. If parent is greater than confirmation, it means
@@ -147,7 +153,7 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) error {
 	// because no matter what it will not win.
 	parentDepth := f.blockchain.Tail.Height - prevBlockWrapper.Height
 	if parentDepth > int64(f.config.CONFIRMATION) {
-		return errors.New("parent is buried too deep")
+		return tailChange, errors.New("parent is buried too deep")
 	}
 
 	// Here we need to make a deep copy of the entire previous block's ledger because we are chaning it.
@@ -156,19 +162,19 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) error {
 	// Total transaction fee.
 	fee, err := utils.CalcTxFee(pendingBlock.Txs, l)
 	if err != nil {
-		return err
+		return tailChange, err
 	}
 
 	// Coinbase should be valid.
 	err = utils.IsValidCoinbase(pendingBlock.Coinbase, fee+f.config.COINBASE_REWARD)
 	if err != nil {
-		return err
+		return tailChange, err
 	}
 
 	// Handle all transactions and coinbase.
 	err = utils.HandleTransactions(append(pendingBlock.Txs, pendingBlock.Coinbase), l)
 	if err != nil {
-		return err
+		return tailChange, err
 	}
 
 	// Add block to blockchain and remove all transaction from the Tx pool.
@@ -185,11 +191,12 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) error {
 	f.blockchain.Chain[pendingBlock.Hash] = &blockWrapper
 	if blockWrapper.Height > f.blockchain.Tail.Height {
 		f.blockchain.Tail = &blockWrapper
+		tailChange = true
 	}
 	for i := 0; i < len(pendingBlock.Txs); i++ {
 		tx := pendingBlock.Txs[i]
 		delete(f.txPool.TxPool, tx.Hash)
 	}
 
-	return nil
+	return tailChange, nil
 }

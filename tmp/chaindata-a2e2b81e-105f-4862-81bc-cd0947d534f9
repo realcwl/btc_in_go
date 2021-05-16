@@ -1,0 +1,30 @@
+digraph structs {
+  node [shape=Mrecord];
+  2 [label="<name> coinbaseTransaction |{<f0> hash | \"\"} |{<f1> outputs | []visualize.output\{\}} |{<f2> height | 0}  "];
+  10 [label="<name> 1"];
+  9 [label="<name> output |<f0> value|{<f1> publicKey | \"...r/I...\"}  "];
+  9:f0 -> 10:name;
+  7:<8index0> -> 9:name;
+  7 [label="<name> coinbaseTransaction |{<f0> hash | \"bf7...3af\"} |{<f1> outputs | {<8index0> 0}} |{<f2> height | 1}  "];
+  17 [label="<name> 1"];
+  16 [label="<name> output |<f0> value|{<f1> publicKey | \"...r/I...\"}  "];
+  16:f0 -> 17:name;
+  14:<15index0> -> 16:name;
+  14 [label="<name> coinbaseTransaction |{<f0> hash | \"d14...5eb\"} |{<f1> outputs | {<15index0> 0}} |{<f2> height | 2}  "];
+  24 [label="<name> 1"];
+  23 [label="<name> output |<f0> value|{<f1> publicKey | \"...r/I...\"}  "];
+  23:f0 -> 24:name;
+  21:<22index0> -> 23:name;
+  21 [label="<name> coinbaseTransaction |{<f0> hash | \"b90...58e\"} |{<f1> outputs | {<22index0> 0}} |{<f2> height | 3}  "];
+  20 [label="<name> block |{<f0> hash | \"1d0...e50\"} |{<f1> prevHash | \"011...0e3\"} |<f2> coinbase|{<f3> txs | []visualize.transaction\{\}} |{<f4> nounce | 4} |{<f5> children | []visualize.block\{\}}  "];
+  20:f2 -> 21:name;
+  13:<19index0> -> 20:name;
+  13 [label="<name> block |{<f0> hash | \"011...0e3\"} |{<f1> prevHash | \"139...10d\"} |<f2> coinbase|{<f3> txs | []visualize.transaction\{\}} |{<f4> nounce | 2} |{<f5> children | {<19index0> 0}}  "];
+  13:f2 -> 14:name;
+  6:<12index0> -> 13:name;
+  6 [label="<name> block |{<f0> hash | \"139...10d\"} |{<f1> prevHash | \"00\"} |<f2> coinbase|{<f3> txs | []visualize.transaction\{\}} |{<f4> nounce | 1} |{<f5> children | {<12index0> 0}}  "];
+  6:f2 -> 7:name;
+  1:<5index0> -> 6:name;
+  1 [label="<name> block |{<f0> hash | \"00\"} |{<f1> prevHash | \"\"} |<f2> coinbase|{<f3> txs | []visualize.transaction\{\}} |{<f4> nounce | 0} |{<f5> children | {<5index0> 0}}  "];
+  1:f2 -> 2:name;
+}

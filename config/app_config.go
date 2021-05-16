@@ -8,4 +8,6 @@ type AppConfig struct {
 	COINBASE_REWARD float64 `yaml:"COINBASE_REWARD"`
 	// How deep a block is confirmed. Aka how many block need to be after this block to confirm a block.
 	CONFIRMATION int `yaml:"CONFIRMATION"`
+	// Whether or not to remine the block if tail changed in between.
+	REMINE_ON_TAIL_CHANGE bool `yaml:"REMINE_ON_TAIL_CHANGE"`
 }

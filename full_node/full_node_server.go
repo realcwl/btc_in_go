@@ -30,6 +30,9 @@ type FullNodeServer struct {
 	// A bunch of peers that we have grpc connection to.
 	peers    []Peer
 	fullNode *FullNode
+	// A command channel to pass command to other part of the system.
+	// For now, the only use is the interrupt mining process on tail change.
+	cmd chan commands.Command
 }
 
 // Set transaction should add transaction to pool and broad cast to peer.
@@ -89,20 +92,29 @@ func (sev *FullNodeServer) Mine(ctl chan commands.Command) (commands.Command, er
 		return c, err
 	}
 	// Not terminated by command nor mining failure, proceed to handle that block.
-	_, err = sev.SetBlockInternal(&service.SetBlockRequest{Block: b})
+	// A tail change incurred by mining at local isn't cared.
+	_, _, err = sev.SetBlockInternal(&service.SetBlockRequest{Block: b})
 	return commands.NewDefaultCommand(), err
 }
 
-// Handle the incoming block, if the block is valid, just broad cast it to other nodes.
+// Handle the incoming block, this is the external RPC not intended to be called by
+// internal functions. If the block is valid, just broadcast it to other nodes.
 func (sev *FullNodeServer) SetBlock(con context.Context, req *service.SetBlockRequest) (*service.SetBlockResponse, error) {
-	return sev.SetBlockInternal(req)
+	res, tailChange, err := sev.SetBlockInternal(req)
+	// Only external block handling incurred tail change interrupts the mining process.
+	if sev.fullNode.config.REMINE_ON_TAIL_CHANGE && tailChange {
+		sev.cmd <- commands.Command{
+			Op: commands.RESTART,
+		}
+	}
+	return res, err
 }
 
-func (sev *FullNodeServer) SetBlockInternal(req *service.SetBlockRequest) (*service.SetBlockResponse, error) {
+func (sev *FullNodeServer) SetBlockInternal(req *service.SetBlockRequest) (*service.SetBlockResponse, bool, error) {
 	block := req.Block
-	err := sev.fullNode.HandleNewBlock(block)
+	tailChange, err := sev.fullNode.HandleNewBlock(block)
 	if err != nil {
-		return &service.SetBlockResponse{}, err
+		return &service.SetBlockResponse{}, tailChange, err
 	}
 
 	// Broadcast to all other nodes.
@@ -116,7 +128,7 @@ func (sev *FullNodeServer) SetBlockInternal(req *service.SetBlockRequest) (*serv
 		}
 	}
 
-	return &service.SetBlockResponse{}, err
+	return &service.SetBlockResponse{}, tailChange, err
 }
 
 func (sev *FullNodeServer) Show(d int) {
@@ -126,10 +138,11 @@ func (sev *FullNodeServer) Show(d int) {
 
 // Create a new full node server with connection established. Exit if connection
 // cannot be established.
-func NewFullNodeServer(c config.AppConfig, ps []Peer) *FullNodeServer {
+func NewFullNodeServer(c config.AppConfig, ps []Peer, cmd chan commands.Command) *FullNodeServer {
 	sev := FullNodeServer{
 		fullNode: NewFullNode(c),
 		peers:    ps,
+		cmd:      cmd,
 	}
 	for i := 0; i < len(ps); i++ {
 		peer := ps[i]

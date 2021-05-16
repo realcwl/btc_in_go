@@ -146,8 +146,12 @@ func main() {
 	}
 	log.Println(*port, *peers, *peerPorts)
 
-	server := full_node.NewFullNodeServer(cfg, []full_node.Peer{})
+	// A command channel that non-blockingly takes external or internal command
+	// and handle it correspondingly.
+	cmd := make(chan commands.Command)
 
+	// Create a server with peer, config and a command channel to interrupt mining when tail changes.
+	server := full_node.NewFullNodeServer(cfg, []full_node.Peer{}, cmd)
 	grpcServer := grpc.NewServer()
 	service.RegisterFullNodeServiceServer(grpcServer, server)
 	log.Println(cfg)
@@ -157,7 +161,6 @@ func main() {
 	// cmd: Parse string input and create command.
 	// ctl: A separate channel that pass signal to mining routine to interrupt the mining process.
 	// ctl needs to be passed to server in order to let each
-	cmd := make(chan commands.Command)
 	go ParseCommand(cmd)
 	go HandleCommand(cmd, server)
 
