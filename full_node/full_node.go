@@ -84,6 +84,20 @@ func (f *FullNode) CreateNewBlock(ctl chan commands.Command, height int64) (*mod
 	return block, c, err
 }
 
+// Return the height of the tail block.
+func (f *FullNode) GetHeight() int64 {
+	f.m.RLock()
+	defer f.m.RUnlock()
+	return f.blockchain.Tail.Height
+}
+
+// Return tail of the blockchain.
+func (f *FullNode) GetTail() *model.BlockWrapper {
+	f.m.RLock()
+	defer f.m.RUnlock()
+	return f.blockchain.Tail
+}
+
 // Handle the new block received.
 // This function should:
 // 1. Validate the block.

@@ -31,12 +31,6 @@ type FullNodeServer struct {
 	fullNode *FullNode
 }
 
-func (sev *FullNodeServer) GetHeight() int64 {
-	sev.fullNode.m.RLock()
-	defer sev.fullNode.m.RUnlock()
-	return sev.fullNode.blockchain.Tail.Height
-}
-
 // Set transaction should add transaction to pool and broad cast to peer.
 func (sev *FullNodeServer) SetTransaction(con context.Context, req *service.SetTransactionRequest) (*service.SetTransactionResponse, error) {
 	tx := req.GetTx()
@@ -71,7 +65,7 @@ func (sev *FullNodeServer) SetTransaction(con context.Context, req *service.SetT
 // Mine one block and set that block.
 func (sev *FullNodeServer) Mine(ctl chan commands.Command) (commands.Command, error) {
 	// We are mining a block at a new height.
-	height := sev.GetHeight() + 1
+	height := sev.fullNode.GetHeight() + 1
 
 	b, c, err := sev.fullNode.CreateNewBlock(ctl, height)
 	if err != nil {
@@ -109,9 +103,7 @@ func (sev *FullNodeServer) SetBlockInternal(req *service.SetBlockRequest) (*serv
 }
 
 func (sev *FullNodeServer) Show(d int) {
-	sev.fullNode.m.RLock()
-	defer sev.fullNode.m.RUnlock()
-	tail := sev.fullNode.blockchain.Tail
+	tail := sev.fullNode.GetTail()
 	visualize.Render(tail, d, sev.fullNode.uuid)
 }
 
