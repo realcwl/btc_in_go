@@ -58,11 +58,19 @@ func (f *FullNode) AddTransactionToPool(tx *model.Transaction) error {
 }
 
 // Return a deep copy of the ledger at tail.
-func (f *FullNode) GetTailLedgerSnapshot() *model.Ledger {
+func (f *FullNode) GetLedgerSnapshotAtDepth(depth int64) *model.Ledger {
 	f.m.RLock()
 	defer f.m.RUnlock()
 	l := model.NewLedger()
-	copier.Copy(&l, f.blockchain.Tail.L)
+
+	tail := f.blockchain.Tail
+	for i := 0; i < int(depth); i++ {
+		if tail.Parent == nil {
+			break
+		}
+		tail = tail.Parent
+	}
+	copier.Copy(&l, tail.L)
 	return l
 }
 
@@ -99,8 +107,10 @@ func (f *FullNode) GetTail() *model.BlockWrapper {
 }
 
 // Create a snapshot of the given public key's ledger, return all UTXO it has.
+// The snapshot must be obtained at the CONFIRMATION blocks ago, instead of directly
+// snapshot at the tail. See bitcoin whitepaper for more details on block confirmation.
 func (f *FullNode) GetUtxoForPublicKey(pk []byte) model.Ledger {
-	l := f.GetTailLedgerSnapshot()
+	l := f.GetLedgerSnapshotAtDepth(f.config.CONFIRMATION)
 	res := model.NewLedger()
 	for utxoLite, output := range l.L {
 		if utils.IsSameBytes(pk, output.PublicKey) {

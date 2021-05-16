@@ -43,7 +43,7 @@ func (sev *FullNodeServer) SetTransaction(con context.Context, req *service.SetT
 	}
 
 	// First validate the transaction. This is totally optional but is a nice to have optimization.
-	l := sev.fullNode.GetTailLedgerSnapshot()
+	l := sev.fullNode.GetLedgerSnapshotAtDepth(0)
 	err := utils.IsValidTransaction(tx, l)
 	if err != nil {
 		return &service.SetTransactionResponse{}, err
