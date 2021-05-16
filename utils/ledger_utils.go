@@ -31,12 +31,12 @@ func HandleTransaction(tx *model.Transaction, l *model.Ledger) error {
 
 	// Store every output
 	for i := 0; i < len(tx.Outputs); i++ {
-		output := &tx.Outputs[i]
+		output := tx.Outputs[i]
 		utxo := model.UTXO{
 			PrevTxHash: tx.Hash,
 			Index:      int64(i),
 		}
-		l.L[model.GetUtxoLite(&utxo)] = *output
+		l.L[model.GetUtxoLite(&utxo)] = output
 	}
 
 	return nil

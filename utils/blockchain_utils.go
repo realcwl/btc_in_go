@@ -15,7 +15,7 @@ import (
 // 3. Fill in transactions provided.
 // 4. Mine the block.
 // Also, **input ledger must be a deep copy because it will be change permanently.**
-func CreateNewBlock(txs []*model.Transaction, prevHash string, reward float64, pk []byte, l *model.Ledger, difficulty int, ctl chan commands.Command) (*model.Block, commands.Command, error) {
+func CreateNewBlock(txs []*model.Transaction, prevHash string, reward float64, height int64, pk []byte, l *model.Ledger, difficulty int, ctl chan commands.Command) (*model.Block, commands.Command, error) {
 	// First calculate transaction fee.
 	fee, err := CalcTxFee(txs, l)
 	if err != nil {
@@ -30,7 +30,7 @@ func CreateNewBlock(txs []*model.Transaction, prevHash string, reward float64, p
 	block := model.Block{
 		PrevHash: prevHash,
 		Txs:      txs,
-		Coinbase: CreateCoinbaseTx(reward+fee, pk),
+		Coinbase: CreateCoinbaseTx(reward+fee, pk, height),
 	}
 
 	c, err := Mine(&block, difficulty, ctl)

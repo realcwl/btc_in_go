@@ -10,6 +10,7 @@ import (
 	"github.com/Luismorlan/btc_in_go/config"
 	"github.com/Luismorlan/btc_in_go/service"
 	"github.com/Luismorlan/btc_in_go/utils"
+	"github.com/Luismorlan/btc_in_go/visualize"
 	"google.golang.org/grpc"
 )
 
@@ -28,6 +29,12 @@ type FullNodeServer struct {
 	// A bunch of peers that we have grpc connection to.
 	peers    []Peer
 	fullNode *FullNode
+}
+
+func (sev *FullNodeServer) GetHeight() int64 {
+	sev.fullNode.m.RLock()
+	defer sev.fullNode.m.RUnlock()
+	return sev.fullNode.blockchain.Tail.Height
 }
 
 // Set transaction should add transaction to pool and broad cast to peer.
@@ -63,7 +70,10 @@ func (sev *FullNodeServer) SetTransaction(con context.Context, req *service.SetT
 
 // Mine one block and set that block.
 func (sev *FullNodeServer) Mine(ctl chan commands.Command) (commands.Command, error) {
-	b, c, err := sev.fullNode.CreateNewBlock(ctl)
+	// We are mining a block at a new height.
+	height := sev.GetHeight() + 1
+
+	b, c, err := sev.fullNode.CreateNewBlock(ctl, height)
 	if err != nil {
 		return c, err
 	}
@@ -96,6 +106,13 @@ func (sev *FullNodeServer) SetBlockInternal(req *service.SetBlockRequest) (*serv
 	}
 
 	return &service.SetBlockResponse{}, err
+}
+
+func (sev *FullNodeServer) Show(d int) {
+	sev.fullNode.m.RLock()
+	defer sev.fullNode.m.RUnlock()
+	tail := sev.fullNode.blockchain.Tail
+	visualize.Render(tail, d, sev.fullNode.uuid)
 }
 
 // Create a new full node server with connection established. Exit if connection

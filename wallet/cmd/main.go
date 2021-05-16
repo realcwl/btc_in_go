@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/Luismorlan/btc_in_go/commands"
-	"github.com/Luismorlan/btc_in_go/utils"
 	"github.com/Luismorlan/btc_in_go/wallet"
 )
 
@@ -113,15 +112,7 @@ func parseKeyFile(fPath string) (*rsa.PrivateKey, error) {
 		log.Fatal("Failed to read your key from path {} with error {}", fPath, err)
 		return nil, err
 	}
-
-	} else {
-		// read from rsa file
-		userKey, err = readKeyFromFPath(fPath)
-		if err != nil {
-			log.Fatal("Failed to read your key from path", fPath)
-			return nil, err
-		}
-	}
+	return userKey, nil
 }
 
 func readKeyFromFPath(fPath string) (*rsa.PrivateKey, error) {

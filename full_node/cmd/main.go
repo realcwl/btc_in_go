@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,6 +109,12 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 				// because we don't want to block HandleCommand in any situation.
 				ctl <- c
 			}()
+		case commands.SHOW:
+			v, err := strconv.Atoi(c.Args[0])
+			if err != nil {
+				log.Printf("%s is not a valid number for depth", c.Args[0])
+			}
+			server.Show(v)
 		default:
 			log.Print("Unrecognized command:", c)
 			fmt.Print("> ")

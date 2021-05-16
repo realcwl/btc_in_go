@@ -4,7 +4,9 @@ go 1.16
 
 require (
 	github.com/SierraSoftworks/multicast v0.0.0-20190425200731-c029c77710e4 // indirect
+	github.com/bradleyjkemp/memviz v0.2.3 // indirect
 	github.com/jinzhu/copier v0.3.0 // indirect
+	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/stretchr/objx v0.3.0 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
 	google.golang.org/grpc v1.37.1 // indirect

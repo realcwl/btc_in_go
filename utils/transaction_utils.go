@@ -47,6 +47,9 @@ func GetTransactionBytes(tx *model.Transaction, withHash bool) ([]byte, error) {
 		data = append(data, outputData...)
 	}
 
+	// This is needed for Coinbase transaction to avoid block with only CB tx has same txid.
+	data = append(data, Int64ToBytes(tx.Height)...)
+
 	if withHash {
 		hashBytes, err := HexToBytes(tx.Hash)
 		if err != nil {
@@ -229,12 +232,13 @@ func IsValidCoinbase(tx *model.Transaction, maxFee float64) error {
 //Create a transaction with a single output, which is the miner's public key.
 // READONLY:
 // *pk
-func CreateCoinbaseTx(totalReward float64, pk []byte) *model.Transaction {
+func CreateCoinbaseTx(totalReward float64, pk []byte, height int64) *model.Transaction {
 	tx := &model.Transaction{
 		Outputs: []*model.Output{{
 			Value:     totalReward,
 			PublicKey: pk,
 		}},
+		Height: height,
 	}
 	// Ignore error because tx can never be nil.
 	FillTxHash(tx)

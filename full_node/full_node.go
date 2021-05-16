@@ -10,6 +10,7 @@ import (
 	"github.com/Luismorlan/btc_in_go/model"
 	"github.com/Luismorlan/btc_in_go/utils"
 	"github.com/jinzhu/copier"
+	uuid "github.com/satori/go.uuid"
 )
 
 // A full node should maintain the blockchain, and update the blockchain.
@@ -26,10 +27,14 @@ type FullNode struct {
 	config config.AppConfig
 	// A single mutex for changing internal state.
 	m sync.RWMutex
+	// A unique indentifier of this Fullnode, this doesn't impact consensus, only
+	// used for easier implementation.
+	uuid string
 }
 
 // Create a brand new full node, which contains a genesis block in the chain.
 func NewFullNode(c config.AppConfig) *FullNode {
+	myuuid := uuid.NewV4()
 	sk, _ := utils.GenerateKeyPair(2048)
 	return &FullNode{
 		blockchain: model.NewBlockChain(),
@@ -37,6 +42,7 @@ func NewFullNode(c config.AppConfig) *FullNode {
 		keys:       sk,
 		config:     c,
 		m:          sync.RWMutex{},
+		uuid:       myuuid.String(),
 	}
 }
 
@@ -64,7 +70,7 @@ func (f *FullNode) GetTailLedgerSnapshot() *model.Ledger {
 // is a really long process and takes a long time to proccess.
 // This block must be created after the tail block in the blockchain.
 // cmd is a channel that interrupts the mining process at any time
-func (f *FullNode) CreateNewBlock(ctl chan commands.Command) (*model.Block, commands.Command, error) {
+func (f *FullNode) CreateNewBlock(ctl chan commands.Command, height int64) (*model.Block, commands.Command, error) {
 	// Lock the transaction pool for reading.
 	f.m.RLock()
 	l := model.NewLedger()
@@ -74,7 +80,7 @@ func (f *FullNode) CreateNewBlock(ctl chan commands.Command) (*model.Block, comm
 	txs := utils.GetAllTxsInPool(f.txPool)
 	// Mining is a really heavy task
 	f.m.RUnlock()
-	block, c, err := utils.CreateNewBlock(txs, tail.B.Hash, f.config.COINBASE_REWARD, utils.PublicKeyToBytes(&f.keys.PublicKey), l, f.config.DIFFICULTY, ctl)
+	block, c, err := utils.CreateNewBlock(txs, tail.B.Hash, f.config.COINBASE_REWARD, height, utils.PublicKeyToBytes(&f.keys.PublicKey), l, f.config.DIFFICULTY, ctl)
 	return block, c, err
 }
 
@@ -133,8 +139,8 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) error {
 		return err
 	}
 
-	// Each transaction should be able to add to blockchain.
-	err = utils.HandleTransactions(pendingBlock.Txs, l)
+	// Handle all transactions and coinbase.
+	err = utils.HandleTransactions(append(pendingBlock.Txs, pendingBlock.Coinbase), l)
 	if err != nil {
 		return err
 	}
@@ -146,6 +152,10 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) error {
 		Height: prevBlockWrapper.Height + 1,
 		L:      l,
 	}
+
+	// Add the new block to the children of parent block.
+	prevBlockWrapper.Children = append(prevBlockWrapper.Children, &blockWrapper)
+
 	f.blockchain.Chain[pendingBlock.Hash] = &blockWrapper
 	if blockWrapper.Height > f.blockchain.Tail.Height {
 		f.blockchain.Tail = &blockWrapper

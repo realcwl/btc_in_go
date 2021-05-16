@@ -8,6 +8,6 @@ import (
 
 func TestCreateCoinbase(t *testing.T) {
 	_, pk := GenerateKeyPair(2048)
-	cb := CreateCoinbaseTx(1.0, PublicKeyToBytes(pk))
+	cb := CreateCoinbaseTx(1.0, PublicKeyToBytes(pk), 1)
 	assert.Nil(t, IsValidCoinbase(cb, 1.0))
 }

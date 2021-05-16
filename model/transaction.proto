@@ -26,4 +26,9 @@ message Transaction {
   repeated Input inputs = 2;
 	// All outputs of this transaction.
   repeated Output outputs = 3; 
+  // Due to some early problems with blocks containing only a coinbase transaction with an identical
+  // coinbase text and outputs generating coinbase transactions with identical TXIDs, miners agreed
+  // through consensus to begin enforcing BIP 0034 as a protocol rule. This change mandated that the 
+  // block height value be specified in the first item of the coinbase transaction.
+  int64 height = 4;
 }

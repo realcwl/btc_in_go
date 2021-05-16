@@ -3,6 +3,7 @@ package commands
 import (
 	"errors"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -23,6 +24,8 @@ const (
 	ADD_PEER
 	// Renove a peer by ip and port.
 	REMOVE_PEER
+	// Show the blockchain.
+	SHOW
 )
 
 // A command contains a operation and many arguments.
@@ -44,6 +47,15 @@ func (c Command) IsValid() bool {
 		ipRegex, _ := regexp.Compile(IP_REGEX)
 		portRegex, _ := regexp.Compile(PORT_REGEX)
 		return ipRegex.Match([]byte(ipAddr)) && portRegex.Match([]byte(port))
+	case SHOW:
+		if len(c.Args) != 1 {
+			return false
+		}
+		// depth must be a number.
+		if _, err := strconv.Atoi(c.Args[0]); err != nil {
+			return false
+		}
+		return true
 	default:
 		return false
 	}
@@ -68,6 +80,8 @@ func CreateCommand(s string) (Command, error) {
 		cmd.Op = ADD_PEER
 	case "remove_peer":
 		cmd.Op = REMOVE_PEER
+	case "show":
+		cmd.Op = SHOW
 	}
 	cmd.Args = ss[1:]
 	if !cmd.IsValid() {
