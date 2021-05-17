@@ -39,12 +39,7 @@ func PublicKeyToBytes(pub *rsa.PublicKey) []byte {
 		return nil
 	}
 
-	pubBytes := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PUBLIC KEY",
-		Bytes: pubASN1,
-	})
-
-	return pubBytes
+	return pubASN1
 }
 
 // BytesToPrivateKey bytes to private key
@@ -71,19 +66,7 @@ func BytesToPrivateKey(priv []byte) *rsa.PrivateKey {
 
 // BytesToPublicKey bytes to public key
 func BytesToPublicKey(pub []byte) *rsa.PublicKey {
-	block, _ := pem.Decode(pub)
-	enc := x509.IsEncryptedPEMBlock(block)
-	b := block.Bytes
-	var err error
-	if enc {
-		log.Println("is encrypted pem block")
-		b, err = x509.DecryptPEMBlock(block, nil)
-		if err != nil {
-			log.Println(err)
-			return nil
-		}
-	}
-	ifc, err := x509.ParsePKIXPublicKey(b)
+	ifc, err := x509.ParsePKIXPublicKey(pub)
 	if err != nil {
 		log.Println(err)
 		return nil
