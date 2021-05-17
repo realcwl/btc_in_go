@@ -1,9 +1,11 @@
 package full_node
 
 import (
+	"container/list"
 	"crypto/rsa"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/Luismorlan/btc_in_go/commands"
@@ -131,19 +133,21 @@ func (f *FullNode) GetUtxoForPublicKey(pk []byte) model.Ledger {
 //   e. Total input should be <= reward + tx fee
 // 2. Add to blockchain.
 //
-// This function returns 2 things:
+// This function returns 3 things:
 // 1. A boolean flag indicating whether a tail change happens. This is needed
 // because depending on the config we might want to remine the blocks on tail change
 // in order not to waste time mining on a deprecated tail.
-// 2. An error indicating any error happened during mining.
-func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, error) {
+// 2. A boolean flag indicating whether a block hanling failure could happen.
+// TODO(chenweilunster): incoparate this flag into the error code.
+// 3. An error indicating any error happened during mining.
+func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, bool, error) {
 	// Lock mutex because we are changing the state of blockchain.
 	f.m.Lock()
 	defer f.m.Unlock()
 
 	// Block should not already exist in blockchain.
 	if _, ok := f.blockchain.Chain[pendingBlock.Hash]; ok {
-		return false, fmt.Errorf("block already exist in the chain: %s", pendingBlock.Hash)
+		return false, false, fmt.Errorf("block already exist in the chain: %s", pendingBlock.Hash)
 	}
 
 	tailChange := false
@@ -151,17 +155,19 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, error) {
 	utils.MatchDifficulty(pendingBlock, f.config.DIFFICULTY)
 	blockBytes, err := utils.GetBlockBytes(pendingBlock)
 	if err != nil {
-		return tailChange, err
+		return tailChange, false, err
 	}
 	if utils.BytesToHex(utils.SHA256(blockBytes)) != pendingBlock.Hash {
-		return tailChange, errors.New("block hash is invalid")
+		return tailChange, false, errors.New("block hash is invalid")
 	}
 
 	// previous block should exist in blockchain.
 	prevHash := pendingBlock.PrevHash
 	prevBlockWrapper, ok := f.blockchain.Chain[prevHash]
 	if !ok {
-		return tailChange, errors.New("parent block not found in blockchain, parent block hash: " + prevHash)
+		log.Println("parent block not found in blockchain, parent block hash:", prevHash)
+		// Parent not found in blockchain could signal that we're out of sync.
+		return tailChange, true, errors.New("")
 	}
 
 	// Calculate its parent depth in the chain. If parent is greater than confirmation, it means
@@ -169,7 +175,7 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, error) {
 	// because no matter what it will not win.
 	parentDepth := f.blockchain.Tail.Height - prevBlockWrapper.Height
 	if parentDepth > int64(f.config.CONFIRMATION) {
-		return tailChange, errors.New("parent is buried too deep")
+		return tailChange, false, errors.New("parent is buried too deep")
 	}
 
 	// Here we need to make a deep copy of the entire previous block's ledger because we are chaning it.
@@ -178,19 +184,19 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, error) {
 	// Total transaction fee.
 	fee, err := utils.CalcTxFee(pendingBlock.Txs, l)
 	if err != nil {
-		return tailChange, err
+		return tailChange, false, err
 	}
 
 	// Coinbase should be valid.
 	err = utils.IsValidCoinbase(pendingBlock.Coinbase, fee+f.config.COINBASE_REWARD)
 	if err != nil {
-		return tailChange, err
+		return tailChange, false, err
 	}
 
 	// Handle all transactions and coinbase.
 	err = utils.HandleTransactions(append(pendingBlock.Txs, pendingBlock.Coinbase), l)
 	if err != nil {
-		return tailChange, err
+		return tailChange, false, err
 	}
 
 	// Add block to blockchain and remove all transaction from the Tx pool.
@@ -214,5 +220,38 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, error) {
 		delete(f.txPool.TxPool, tx.Hash)
 	}
 
-	return tailChange, nil
+	return tailChange, false, nil
+}
+
+// GetBlocks returns a $number of blocks starting from the given hash. It only returns blocks from the longest chain.
+func (f *FullNode) GetBlocks(hash string, number int) ([]*model.Block, bool) {
+	f.m.RLock()
+	dq := list.New()
+	tail := f.blockchain.Tail
+	f.m.RUnlock()
+
+	synced := true
+	for tail.B.Hash != hash {
+		dq.PushFront(tail.B)
+		if dq.Len() > number {
+			// As long as we're poping anything, it means the chain is not synced
+			// and will need another call to possibly other peers to fully sync.
+			synced = false
+			e := dq.Back()
+			dq.Remove(e)
+		}
+
+		if tail.Parent == nil || tail.Parent.B.Hash == "00" {
+			// Break when reaching genesis block.
+			break
+		}
+		tail = tail.Parent
+	}
+	res := []*model.Block{}
+	bw := dq.Front()
+	for bw != nil {
+		res = append(res, bw.Value.(*model.Block))
+		bw = bw.Next()
+	}
+	return res, synced
 }

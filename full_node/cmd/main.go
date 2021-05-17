@@ -127,6 +127,11 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 				log.Printf("%s is not a valid number for depth", c.Args[0])
 			}
 			server.Show(v)
+		case commands.SYNC:
+			err := server.SyncToLatest()
+			if err != nil {
+				log.Printf("fail to sync to latest: " + err.Error())
+			}
 		default:
 			log.Print("Unrecognized command:", c)
 			fmt.Print("> ")

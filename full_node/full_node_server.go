@@ -3,6 +3,7 @@ package full_node
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -17,11 +18,16 @@ import (
 	"google.golang.org/grpc/connectivity"
 )
 
+// TODO(chenweilunster): Clean this up because this is too fking ugly.
+const PEER_ALREADY_EXIST_ERR = "peer already exist"
+
 type Peer struct {
 	// A service client established to connect to other full node.
 	client service.FullNodeServiceClient
 	// Peer address
 	addr Address
+	// The connection for this peer. Each peer/client has a dedicated connection.
+	conn *grpc.ClientConn
 }
 
 // Stringer function of peer.
@@ -43,10 +49,19 @@ type FullNodeServer struct {
 	peers []Peer
 	addr  Address
 
-	// Create a mutex protect peers addition and deletion.
-	pm sync.RWMutex
+	// Create a mutex protect peers addition and deletion, as well as continous
+	// block failure handlment accounting.
+	m sync.RWMutex
 
+	// FullNode manages all important states about blockchain.
 	fullNode *FullNode
+
+	// A counter counts how many failures we continously encountered for handle block.
+	// A large number means very likely we're out of sync and need to sync the blockchain.
+	// This number is incremented by handle failure, and reduced by successful handle.
+	blockFailure int
+	syncing      bool
+
 	// A command channel to pass command to other part of the system.
 	// For now, the only use is the interrupt mining process on tail change.
 	cmd chan commands.Command
@@ -54,9 +69,18 @@ type FullNodeServer struct {
 
 // Return all current peers.
 func (sev *FullNodeServer) GetAllPeers() []Peer {
-	sev.pm.RLock()
-	defer sev.pm.RUnlock()
+	sev.m.RLock()
+	defer sev.m.RUnlock()
 	return sev.peers
+}
+
+func (sev *FullNodeServer) GetPeer(idx int) (Peer, error) {
+	sev.m.RLock()
+	defer sev.m.RUnlock()
+	if idx > len(sev.GetAllPeers()) {
+		return Peer{}, fmt.Errorf("out of bound: %d", idx)
+	}
+	return sev.peers[idx], nil
 }
 
 // Set transaction should add transaction to pool and broad cast to peer.
@@ -80,8 +104,8 @@ func (sev *FullNodeServer) SetTransaction(con context.Context, req *service.SetT
 	}
 
 	// Broadcast to all other nodes.
-	sev.pm.RLock()
-	defer sev.pm.RUnlock()
+	sev.m.RLock()
+	defer sev.m.RUnlock()
 	for i := 0; i < len(sev.peers); i++ {
 		peer := sev.peers[i]
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -119,8 +143,60 @@ func (sev *FullNodeServer) Mine(ctl chan commands.Command) (commands.Command, er
 	}
 	// Not terminated by command nor mining failure, proceed to handle that block.
 	// A tail change incurred by mining at local isn't cared.
-	_, _, err = sev.SetBlockInternal(&service.SetBlockRequest{Block: b})
+	_, _, _, err = sev.SetBlockInternal(&service.SetBlockRequest{Block: b}, true /*broadcast=*/)
 	return commands.NewDefaultCommand(), err
+}
+
+// Round-robin query peers to sync to the latest block.
+func (sev *FullNodeServer) SyncToLatest() error {
+	log.Println("start syncing...")
+	// boolean flag doesn't need mutex protection because it's a benign race.
+	sev.syncing = true
+
+	peerSize := len(sev.GetAllPeers())
+	if peerSize == 0 {
+		return errors.New("no peer to sync")
+	}
+	// TODO(chenweilunster): Make this configurable
+	batch_size := 5
+	tail := sev.fullNode.GetTail()
+	i := 0
+	for {
+		// Peer size might change, we must get peer size every time.
+		peerSize = len(sev.GetAllPeers())
+		i = i % peerSize
+		p, err := sev.GetPeer(i)
+		if err != nil || p.conn.GetState() != connectivity.Ready {
+			// Don't return error here. The peer might be just deleted or some other reason.
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		res, err := p.client.Sync(ctx, &service.SyncRequest{Hash: tail.B.Hash, Number: int64(batch_size)})
+		if err != nil {
+			return err
+		}
+		// Add blocks to blockchain.
+		for i := 0; i < len(res.Block); i++ {
+			b := res.Block[i]
+			sev.SetBlockInternal(&service.SetBlockRequest{Block: b}, false /*broadcast=*/)
+		}
+		if res.Synced {
+			log.Println("fully synced")
+			break
+		}
+		// Update tail and choose the next peer.
+		tail = sev.fullNode.GetTail()
+		i++
+	}
+
+	sev.m.Lock()
+	defer sev.m.Unlock()
+	// Although each of them is benign race, changing them together is not,
+	// thus we need to use a mutex to protect them.
+	sev.syncing = false
+	sev.blockFailure = 0
+	return nil
 }
 
 // Add a connection to peer, note that this is a best effort 2-way connection.
@@ -130,13 +206,13 @@ func (sev *FullNodeServer) AddPeer(ctx context.Context, req *service.AddPeerRequ
 }
 
 func (sev *FullNodeServer) AddPeerInternal(req *service.AddPeerRequest) (service.FullNodeServiceClient, error) {
-	sev.pm.RLock()
+	sev.m.RLock()
 	for _, p := range sev.peers {
 		if p.addr.IpAddr == req.NodeAddr.IpAddr && p.addr.Port == req.NodeAddr.Port {
-			return nil, errors.New("peer already exist")
+			return nil, errors.New(PEER_ALREADY_EXIST_ERR)
 		}
 	}
-	sev.pm.RUnlock()
+	sev.m.RUnlock()
 
 	nodeAddr := req.NodeAddr
 	var opts []grpc.DialOption
@@ -157,12 +233,13 @@ func (sev *FullNodeServer) AddPeerInternal(req *service.AddPeerRequest) (service
 		Port:   nodeAddr.Port,
 	}
 
-	sev.pm.Lock()
+	sev.m.Lock()
 	sev.peers = append(sev.peers, Peer{
 		client: client,
 		addr:   addr,
+		conn:   conn,
 	})
-	sev.pm.Unlock()
+	sev.m.Unlock()
 
 	// Spin up a process that GC idle connection, we GC the client in a
 	// expo backoff way to avoid overloading any peer.
@@ -198,8 +275,8 @@ func (sev *FullNodeServer) AddPeerInternal(req *service.AddPeerRequest) (service
 
 // Remove a peer from the peer list.
 func (sev *FullNodeServer) RemovePeer(addr Address) {
-	sev.pm.Lock()
-	defer sev.pm.Unlock()
+	sev.m.Lock()
+	defer sev.m.Unlock()
 	for i := 0; i < len(sev.peers); i++ {
 		if sev.peers[i].addr == addr {
 			// Find the peer in peer list and remove it.
@@ -221,9 +298,9 @@ func (sev *FullNodeServer) AddMutualConnection(ipAddr string, port string) error
 	_, err = client.AddPeer(ctx, &service.AddPeerRequest{NodeAddr: &service.NodeAddr{IpAddr: sev.addr.IpAddr, Port: sev.addr.Port}})
 	// TODO(chenweilunster): This is very hacky..must be some better way to check
 	// whether the peer error due to peer already exist.
-	sev.pm.Lock()
-	defer sev.pm.Unlock()
-	if err != nil && err.Error() != "peer already exist" {
+	sev.m.Lock()
+	defer sev.m.Unlock()
+	if err != nil && err.Error() != PEER_ALREADY_EXIST_ERR {
 		// Peer cannot add a new peer, prune this peer.
 		log.Println(err)
 		sev.peers = sev.peers[:len(sev.peers)-1]
@@ -235,8 +312,21 @@ func (sev *FullNodeServer) AddMutualConnection(ipAddr string, port string) error
 // Handle the incoming block, this is the external RPC not intended to be called by
 // internal functions. If the block is valid, just broadcast it to other nodes.
 func (sev *FullNodeServer) SetBlock(con context.Context, req *service.SetBlockRequest) (*service.SetBlockResponse, error) {
-	log.Println("Received a new block: ", req.Block.Hash)
-	res, tailChange, err := sev.SetBlockInternal(req)
+	log.Println("received a new block: ", req.Block.Hash)
+	res, tailChange, outOfSync, err := sev.SetBlockInternal(req, true /*broadcast=*/)
+	// If there are signal that we're out of sync...
+	// This mostly means we seen blocks not in parent.
+	if err != nil && outOfSync {
+		sev.m.Lock()
+		sev.blockFailure++
+		if sev.blockFailure >= int(sev.fullNode.config.CONFIRMATION) {
+			sev.cmd <- commands.Command{
+				Op: commands.SYNC,
+			}
+		}
+		sev.m.Unlock()
+	}
+
 	// Only external block handling incurred tail change interrupts the mining process.
 	if sev.fullNode.config.REMINE_ON_TAIL_CHANGE && tailChange {
 		sev.cmd <- commands.Command{
@@ -246,16 +336,20 @@ func (sev *FullNodeServer) SetBlock(con context.Context, req *service.SetBlockRe
 	return res, err
 }
 
-func (sev *FullNodeServer) SetBlockInternal(req *service.SetBlockRequest) (*service.SetBlockResponse, bool, error) {
+func (sev *FullNodeServer) SetBlockInternal(req *service.SetBlockRequest, broadcast bool) (*service.SetBlockResponse, bool, bool, error) {
 	block := req.Block
-	tailChange, err := sev.fullNode.HandleNewBlock(block)
+	tailChange, outOfSync, err := sev.fullNode.HandleNewBlock(block)
 	if err != nil {
-		return &service.SetBlockResponse{}, tailChange, err
+		return &service.SetBlockResponse{}, tailChange, outOfSync, err
 	}
 
 	// Broadcast to all other nodes.
-	sev.pm.RLock()
-	defer sev.pm.RUnlock()
+	if !broadcast {
+		return &service.SetBlockResponse{}, tailChange, outOfSync, err
+	}
+
+	sev.m.RLock()
+	defer sev.m.RUnlock()
 	for i := 0; i < len(sev.peers); i++ {
 		peer := sev.peers[i]
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -266,7 +360,15 @@ func (sev *FullNodeServer) SetBlockInternal(req *service.SetBlockRequest) (*serv
 		}
 	}
 
-	return &service.SetBlockResponse{}, tailChange, err
+	return &service.SetBlockResponse{}, tailChange, outOfSync, err
+}
+
+// Sync returns blocks it knows of starting from the given hash in request. If not found the block at all,
+// return from the first non-genesis block in the blockchain. This function only returns blocks from the
+// longest chain.
+func (sev *FullNodeServer) Sync(ctx context.Context, req *service.SyncRequest) (*service.SyncResponse, error) {
+	blocks, synced := sev.fullNode.GetBlocks(req.Hash, int(req.Number))
+	return &service.SyncResponse{Block: blocks, Synced: synced}, nil
 }
 
 func (sev *FullNodeServer) Show(d int) {
@@ -282,7 +384,7 @@ func NewFullNodeServer(c config.AppConfig, ps []Peer, addr Address, cmd chan com
 		peers:    ps,
 		cmd:      cmd,
 		addr:     addr,
-		pm:       sync.RWMutex{},
+		m:        sync.RWMutex{},
 	}
 	for i := 0; i < len(ps); i++ {
 		peer := ps[i]

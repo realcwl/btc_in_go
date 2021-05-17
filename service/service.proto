@@ -21,6 +21,9 @@ service FullNodeService {
 
   // Add a new peer to this full node and create a bidirection connection.
   rpc AddPeer(AddPeerRequest) returns (AddPeerResponse) {}
+
+  // Return blocks in blockchain to help peers catching up with the system.
+  rpc Sync(SyncRequest) returns (SyncResponse) {}
 }
 
 message SetTransactionRequest {
@@ -67,3 +70,17 @@ message AddPeerRequest {
 }
 
 message AddPeerResponse {}
+
+message SyncRequest {
+  // The hash of the last block the peer has heard of.
+  string hash = 1;
+  // The number of blocks to return.
+  int64 number = 2;
+}
+
+message SyncResponse {
+  // A list of blocks ranked by height from the least to the most.
+  repeated Block block = 1;
+  // Return true if the chain is fully synced to tail.
+  bool synced = 2;
+}

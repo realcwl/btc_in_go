@@ -28,6 +28,8 @@ const (
 	LIST_PEER
 	// Show the blockchain.
 	SHOW
+	// Sync the blockchain.
+	SYNC
 )
 
 // A command contains a operation and many arguments.
