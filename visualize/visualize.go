@@ -152,8 +152,8 @@ func Render(tail *model.BlockWrapper, d int, id string) {
 	memviz.Map(buf, &chain)
 
 	// Write the parsed data to disk
-	fileName := "tmp/chaindata-" + id
-	outputName := "tmp/rendered-chain-" + id + ".png"
+	fileName := "/tmp/chaindata-" + id
+	outputName := "/tmp/rendered-chain-" + id + ".png"
 	err := ioutil.WriteFile(fileName, buf.Bytes(), 0644)
 	if err != nil {
 		panic(err)
