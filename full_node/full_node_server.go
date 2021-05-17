@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/Luismorlan/btc_in_go/commands"
@@ -13,6 +14,7 @@ import (
 	"github.com/Luismorlan/btc_in_go/utils"
 	"github.com/Luismorlan/btc_in_go/visualize"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 )
 
 type Peer struct {
@@ -20,8 +22,6 @@ type Peer struct {
 	client service.FullNodeServiceClient
 	// Peer address
 	addr Address
-	// A callback function to call when delete this peer.
-	clean func()
 }
 
 // Stringer function of peer.
@@ -43,13 +43,19 @@ type FullNodeServer struct {
 	peers []Peer
 	addr  Address
 
+	// Create a mutex protect peers addition and deletion.
+	pm sync.RWMutex
+
 	fullNode *FullNode
 	// A command channel to pass command to other part of the system.
 	// For now, the only use is the interrupt mining process on tail change.
 	cmd chan commands.Command
 }
 
+// Return all current peers.
 func (sev *FullNodeServer) GetAllPeers() []Peer {
+	sev.pm.RLock()
+	defer sev.pm.RUnlock()
 	return sev.peers
 }
 
@@ -74,6 +80,8 @@ func (sev *FullNodeServer) SetTransaction(con context.Context, req *service.SetT
 	}
 
 	// Broadcast to all other nodes.
+	sev.pm.RLock()
+	defer sev.pm.RUnlock()
 	for i := 0; i < len(sev.peers); i++ {
 		peer := sev.peers[i]
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -122,11 +130,14 @@ func (sev *FullNodeServer) AddPeer(ctx context.Context, req *service.AddPeerRequ
 }
 
 func (sev *FullNodeServer) AddPeerInternal(req *service.AddPeerRequest) (service.FullNodeServiceClient, error) {
+	sev.pm.RLock()
 	for _, p := range sev.peers {
 		if p.addr.IpAddr == req.NodeAddr.IpAddr && p.addr.Port == req.NodeAddr.Port {
 			return nil, errors.New("peer already exist")
 		}
 	}
+	sev.pm.RUnlock()
+
 	nodeAddr := req.NodeAddr
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithInsecure())
@@ -139,14 +150,63 @@ func (sev *FullNodeServer) AddPeerInternal(req *service.AddPeerRequest) (service
 		return nil, err
 	}
 	client := service.NewFullNodeServiceClient(conn)
+
+	// Convert from gRPC address proto to local address struct.
+	addr := Address{
+		IpAddr: nodeAddr.IpAddr,
+		Port:   nodeAddr.Port,
+	}
+
+	sev.pm.Lock()
 	sev.peers = append(sev.peers, Peer{
 		client: client,
-		addr: Address{
-			IpAddr: nodeAddr.IpAddr,
-			Port:   nodeAddr.Port,
-		},
+		addr:   addr,
 	})
+	sev.pm.Unlock()
+
+	// Spin up a process that GC idle connection, we GC the client in a
+	// expo backoff way to avoid overloading any peer.
+	go func() {
+		// Retry 3 times in total.
+		retry := 3
+		// How many times we already tried.
+		try := 0
+		// Retry every 3 seconds.
+		base := 3
+		for {
+			time.Sleep(time.Duration(base) * time.Second)
+			if conn.GetState() == connectivity.Ready {
+				// Reset on any successful retry.
+				try = 0
+				base = 3
+				continue
+			}
+			try++
+			// Exponential backoff for retry.
+			base *= 2
+			if try >= retry {
+				// If we already tried enough times, we just break and reclaim the connection.
+				break
+			}
+		}
+		log.Println("close dead peer:", addr)
+		conn.Close()
+		sev.RemovePeer(addr)
+	}()
 	return client, nil
+}
+
+// Remove a peer from the peer list.
+func (sev *FullNodeServer) RemovePeer(addr Address) {
+	sev.pm.Lock()
+	defer sev.pm.Unlock()
+	for i := 0; i < len(sev.peers); i++ {
+		if sev.peers[i].addr == addr {
+			// Find the peer in peer list and remove it.
+			sev.peers = append(sev.peers[:i], sev.peers[i+1:]...)
+			return
+		}
+	}
 }
 
 // Add a mutual connection to a remote full node.
@@ -161,6 +221,8 @@ func (sev *FullNodeServer) AddMutualConnection(ipAddr string, port string) error
 	_, err = client.AddPeer(ctx, &service.AddPeerRequest{NodeAddr: &service.NodeAddr{IpAddr: sev.addr.IpAddr, Port: sev.addr.Port}})
 	// TODO(chenweilunster): This is very hacky..must be some better way to check
 	// whether the peer error due to peer already exist.
+	sev.pm.Lock()
+	defer sev.pm.Unlock()
 	if err != nil && err.Error() != "peer already exist" {
 		// Peer cannot add a new peer, prune this peer.
 		log.Println(err)
@@ -192,6 +254,8 @@ func (sev *FullNodeServer) SetBlockInternal(req *service.SetBlockRequest) (*serv
 	}
 
 	// Broadcast to all other nodes.
+	sev.pm.RLock()
+	defer sev.pm.RUnlock()
 	for i := 0; i < len(sev.peers); i++ {
 		peer := sev.peers[i]
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -218,6 +282,7 @@ func NewFullNodeServer(c config.AppConfig, ps []Peer, addr Address, cmd chan com
 		peers:    ps,
 		cmd:      cmd,
 		addr:     addr,
+		pm:       sync.RWMutex{},
 	}
 	for i := 0; i < len(ps); i++ {
 		peer := ps[i]
