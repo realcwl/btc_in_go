@@ -49,8 +49,8 @@ func (c Command) IsValid() bool {
 		ip := net.ParseIP(ipAddr)
 
 		portRegex, _ := regexp.Compile(PORT_REGEX)
-		// Is a valid global unicast ipv6 address and has valid port.
-		return ip != nil && ip.To4() == nil && ip.IsGlobalUnicast() && portRegex.Match([]byte(port))
+		// Is a valid public ipv4 address and has valid port.
+		return ip != nil && ip.To4() != nil && ip.IsGlobalUnicast() && portRegex.Match([]byte(port))
 	case SHOW:
 		if len(c.Args) != 1 {
 			return false

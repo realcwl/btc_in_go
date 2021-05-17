@@ -132,8 +132,8 @@ func (sev *FullNodeServer) AddPeerInternal(req *service.AddPeerRequest) (service
 	opts = append(opts, grpc.WithInsecure())
 
 	// Create a connection to the incoming peer. Do not close the connection.
-	// The ip is assumed to be a ipv6 address.
-	conn, err := grpc.Dial("["+nodeAddr.IpAddr+"]"+":"+nodeAddr.Port, opts...)
+	// The ip is assumed to be a ipv4 address.
+	conn, err := grpc.Dial(nodeAddr.IpAddr+":"+nodeAddr.Port, opts...)
 	if err != nil {
 		log.Printf("fail to dial peer when AddPeer: %v", err)
 		return nil, err

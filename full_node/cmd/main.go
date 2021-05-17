@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -146,8 +147,9 @@ func ParseAppConfig(path string) config.AppConfig {
 	return c
 }
 
-// Get local ipv6 unicast address, exit if not found.
+// Get IPv4 public address
 func localAddress() full_node.Address {
+	/* DEPRECATED - IPv6 doesn't seem to be working :(
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		log.Fatalln(err)
@@ -165,6 +167,22 @@ func localAddress() full_node.Address {
 
 	log.Fatalln("doesn't find any ipv6 unicast address to listen to")
 	return full_node.Address{}
+	*/
+	url := "https://api.ipify.org?format=text"
+
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer resp.Body.Close()
+	ip, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return full_node.Address{
+		IpAddr: string(ip),
+		Port:   *port,
+	}
 }
 
 func main() {
@@ -173,7 +191,7 @@ func main() {
 	cfg := ParseAppConfig(*configPath)
 	la := localAddress()
 
-	lis, err := net.Listen("tcp", fmt.Sprintf("[%s]:%s", la.IpAddr, la.Port))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", la.Port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
