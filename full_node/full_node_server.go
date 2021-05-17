@@ -314,9 +314,9 @@ func (sev *FullNodeServer) AddMutualConnection(ipAddr string, port string) error
 func (sev *FullNodeServer) SetBlock(con context.Context, req *service.SetBlockRequest) (*service.SetBlockResponse, error) {
 	log.Println("received a new block: ", req.Block.Hash)
 	res, tailChange, outOfSync, err := sev.SetBlockInternal(req, true /*broadcast=*/)
-	// If there are signal that we're out of sync...
-	// This mostly means we seen blocks not in parent.
-	if err != nil && outOfSync {
+	// If there is a possible signal of out of sync, and we are not currently syncing,
+	// we should try to sync with peer in a round robin manner.
+	if err != nil && outOfSync && !sev.syncing {
 		sev.m.Lock()
 		sev.blockFailure++
 		if sev.blockFailure >= int(sev.fullNode.config.CONFIRMATION) {

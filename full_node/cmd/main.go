@@ -128,10 +128,12 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 			}
 			server.Show(v)
 		case commands.SYNC:
-			err := server.SyncToLatest()
-			if err != nil {
-				log.Printf("fail to sync to latest: " + err.Error())
-			}
+			go func() {
+				err := server.SyncToLatest()
+				if err != nil {
+					log.Printf("fail to sync to latest: " + err.Error())
+				}
+			}()
 		default:
 			log.Print("Unrecognized command:", c)
 			fmt.Print("> ")
