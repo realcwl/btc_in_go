@@ -6,14 +6,12 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"log"
 )
 
 // GenerateKeyPair generates a new key pair
 func GenerateKeyPair(bits int) (*rsa.PrivateKey, *rsa.PublicKey) {
 	privkey, err := rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {
-		log.Println(err)
 		return nil, nil
 	}
 	return privkey, &privkey.PublicKey
@@ -35,7 +33,6 @@ func PrivateKeyToBytes(priv *rsa.PrivateKey) []byte {
 func PublicKeyToBytes(pub *rsa.PublicKey) []byte {
 	pubASN1, err := x509.MarshalPKIXPublicKey(pub)
 	if err != nil {
-		log.Println(err)
 		return nil
 	}
 
@@ -49,16 +46,13 @@ func BytesToPrivateKey(priv []byte) *rsa.PrivateKey {
 	b := block.Bytes
 	var err error
 	if enc {
-		log.Println("is encrypted pem block")
 		b, err = x509.DecryptPEMBlock(block, nil)
 		if err != nil {
-			log.Println(err)
 			return nil
 		}
 	}
 	key, err := x509.ParsePKCS1PrivateKey(b)
 	if err != nil {
-		log.Println(err)
 		return nil
 	}
 	return key
@@ -68,12 +62,10 @@ func BytesToPrivateKey(priv []byte) *rsa.PrivateKey {
 func BytesToPublicKey(pub []byte) *rsa.PublicKey {
 	ifc, err := x509.ParsePKIXPublicKey(pub)
 	if err != nil {
-		log.Println(err)
 		return nil
 	}
 	key, ok := ifc.(*rsa.PublicKey)
 	if !ok {
-		log.Println("Not okay when constructing public key")
 		return nil
 	}
 	return key
@@ -121,6 +113,5 @@ func Verify(msg []byte, pk *rsa.PublicKey, signature []byte) bool {
 	if err == nil {
 		return true
 	}
-	log.Println("Fail to verify signature")
 	return false
 }

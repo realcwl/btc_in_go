@@ -2,6 +2,7 @@ package commands
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"regexp"
 	"strconv"
@@ -93,7 +94,7 @@ func CreateCommand(s string) (Command, error) {
 	}
 	cmd.Args = ss[1:]
 	if !cmd.IsValid() {
-		return Command{}, errors.New("invalid command")
+		return Command{}, fmt.Errorf("invalid command: %s", ss[0])
 	}
 	return cmd, nil
 }

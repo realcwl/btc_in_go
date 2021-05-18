@@ -10,4 +10,6 @@ type AppConfig struct {
 	CONFIRMATION int64 `yaml:"CONFIRMATION"`
 	// Whether or not to remine the block if tail changed in between.
 	REMINE_ON_TAIL_CHANGE bool `yaml:"REMINE_ON_TAIL_CHANGE"`
+	// Enable debug mode. This mode will disable any fancy GUI and let's you just print error on screen.
+	DEBUG_MODE bool `yaml:"DEBUG_MODE"`
 }

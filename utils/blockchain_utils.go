@@ -2,7 +2,6 @@ package utils
 
 import (
 	"errors"
-	"log"
 	"time"
 
 	"github.com/Luismorlan/btc_in_go/commands"
@@ -51,7 +50,6 @@ func Mine(block *model.Block, difficulty int, ctl chan commands.Command) (comman
 			isMatched, digest := MatchDifficulty(block, difficulty)
 			if isMatched {
 				block.Hash = digest
-				log.Println("successfully mined a block: ", digest)
 				return commands.NewDefaultCommand(), nil
 			}
 		}
@@ -97,7 +95,6 @@ func GetBlockBytes(block *model.Block) ([]byte, error) {
 func MatchDifficulty(block *model.Block, difficulty int) (bool, string) {
 	blockBytes, err := GetBlockBytes(block)
 	if err != nil {
-		log.Println(err)
 		return false, ""
 	}
 	digest := SHA256(blockBytes)

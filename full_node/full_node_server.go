@@ -14,6 +14,7 @@ import (
 	"github.com/Luismorlan/btc_in_go/service"
 	"github.com/Luismorlan/btc_in_go/utils"
 	"github.com/Luismorlan/btc_in_go/visualize"
+	"github.com/jroimartin/gocui"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 )
@@ -65,6 +66,8 @@ type FullNodeServer struct {
 	// A command channel to pass command to other part of the system.
 	// For now, the only use is the interrupt mining process on tail change.
 	cmd chan commands.Command
+	// A command fancy place to put output.
+	g *gocui.Gui
 }
 
 // Return all current peers.
@@ -87,19 +90,21 @@ func (sev *FullNodeServer) GetPeer(idx int) (Peer, error) {
 func (sev *FullNodeServer) SetTransaction(con context.Context, req *service.SetTransactionRequest) (*service.SetTransactionResponse, error) {
 	tx := req.GetTx()
 	if tx == nil {
-		return &service.SetTransactionResponse{}, errors.New("input transaction is nil")
+		return &service.SetTransactionResponse{}, nil
 	}
 
 	// First validate the transaction. This is totally optional but is a nice to have optimization.
 	l := sev.fullNode.GetLedgerSnapshotAtDepth(0)
 	err := utils.IsValidTransaction(tx, l)
 	if err != nil {
-		return &service.SetTransactionResponse{}, err
+		sev.Log("invalid incoming transaction: " + err.Error())
+		return &service.SetTransactionResponse{}, nil
 	}
 
 	// Add the transaction to pool.
 	err = sev.fullNode.AddTransactionToPool(tx)
 	if err != nil {
+		sev.Log("fail to add transaction to pool: " + err.Error())
 		return &service.SetTransactionResponse{}, err
 	}
 
@@ -144,12 +149,15 @@ func (sev *FullNodeServer) Mine(ctl chan commands.Command) (commands.Command, er
 	// Not terminated by command nor mining failure, proceed to handle that block.
 	// A tail change incurred by mining at local isn't cared.
 	_, _, _, err = sev.SetBlockInternal(&service.SetBlockRequest{Block: b}, true /*broadcast=*/)
+	if err == nil {
+		sev.Log("successfully mined a new block: " + b.Hash)
+	}
 	return commands.NewDefaultCommand(), err
 }
 
 // Round-robin query peers to sync to the latest block.
 func (sev *FullNodeServer) SyncToLatest() error {
-	log.Println("start syncing...")
+	sev.Log("start syncing...")
 	// boolean flag doesn't need mutex protection because it's a benign race.
 	sev.syncing = true
 
@@ -182,7 +190,7 @@ func (sev *FullNodeServer) SyncToLatest() error {
 			sev.SetBlockInternal(&service.SetBlockRequest{Block: b}, false /*broadcast=*/)
 		}
 		if res.Synced {
-			log.Println("fully synced")
+			sev.Log("fully synced")
 			break
 		}
 		// Update tail and choose the next peer.
@@ -202,7 +210,10 @@ func (sev *FullNodeServer) SyncToLatest() error {
 // Add a connection to peer, note that this is a best effort 2-way connection.
 func (sev *FullNodeServer) AddPeer(ctx context.Context, req *service.AddPeerRequest) (*service.AddPeerResponse, error) {
 	_, err := sev.AddPeerInternal(req)
-	return &service.AddPeerResponse{}, err
+	if err != nil {
+		sev.Log("fail to add peer: " + err.Error())
+	}
+	return &service.AddPeerResponse{}, nil
 }
 
 func (sev *FullNodeServer) AddPeerInternal(req *service.AddPeerRequest) (service.FullNodeServiceClient, error) {
@@ -222,7 +233,7 @@ func (sev *FullNodeServer) AddPeerInternal(req *service.AddPeerRequest) (service
 	// The ip is assumed to be a ipv4 address.
 	conn, err := grpc.Dial(nodeAddr.IpAddr+":"+nodeAddr.Port, opts...)
 	if err != nil {
-		log.Printf("fail to dial peer when AddPeer: %v", err)
+		sev.Log(fmt.Sprintf("fail to dial peer when AddPeer: %v", err))
 		return nil, err
 	}
 	client := service.NewFullNodeServiceClient(conn)
@@ -266,7 +277,7 @@ func (sev *FullNodeServer) AddPeerInternal(req *service.AddPeerRequest) (service
 				break
 			}
 		}
-		log.Println("close dead peer:", addr)
+		sev.Log(fmt.Sprintf("close dead peer: %s:%s", addr.IpAddr, addr.Port))
 		conn.Close()
 		sev.RemovePeer(addr)
 	}()
@@ -302,7 +313,7 @@ func (sev *FullNodeServer) AddMutualConnection(ipAddr string, port string) error
 	defer sev.m.Unlock()
 	if err != nil && err.Error() != PEER_ALREADY_EXIST_ERR {
 		// Peer cannot add a new peer, prune this peer.
-		log.Println(err)
+		sev.Log(err.Error())
 		sev.peers = sev.peers[:len(sev.peers)-1]
 		return err
 	}
@@ -312,7 +323,7 @@ func (sev *FullNodeServer) AddMutualConnection(ipAddr string, port string) error
 // Handle the incoming block, this is the external RPC not intended to be called by
 // internal functions. If the block is valid, just broadcast it to other nodes.
 func (sev *FullNodeServer) SetBlock(con context.Context, req *service.SetBlockRequest) (*service.SetBlockResponse, error) {
-	log.Println("received a new block: ", req.Block.Hash)
+	sev.Log(fmt.Sprintf("received a new block: %s", req.Block.Hash))
 	res, tailChange, outOfSync, err := sev.SetBlockInternal(req, true /*broadcast=*/)
 	// If there is a possible signal of out of sync, and we are not currently syncing,
 	// we should try to sync with peer in a round robin manner.
@@ -333,7 +344,10 @@ func (sev *FullNodeServer) SetBlock(con context.Context, req *service.SetBlockRe
 			Op: commands.RESTART,
 		}
 	}
-	return res, err
+	if err != nil {
+		sev.Log("fail to handle incoming block: " + req.Block.Hash + " err: " + err.Error())
+	}
+	return res, nil
 }
 
 func (sev *FullNodeServer) SetBlockInternal(req *service.SetBlockRequest, broadcast bool) (*service.SetBlockResponse, bool, bool, error) {
@@ -356,7 +370,7 @@ func (sev *FullNodeServer) SetBlockInternal(req *service.SetBlockRequest, broadc
 		defer cancel()
 		_, err := peer.client.SetBlock(ctx, &service.SetBlockRequest{Block: block})
 		if err != nil {
-			log.Println(err)
+			sev.Log(err.Error())
 		}
 	}
 
@@ -376,15 +390,32 @@ func (sev *FullNodeServer) Show(d int) {
 	visualize.Render(tail, d, sev.fullNode.uuid)
 }
 
+// Log the message. If the GUI is not nil, log to GUI, otherwise log to stdout.
+func (sev *FullNodeServer) Log(s string) {
+	if sev.g == nil {
+		log.Println(s)
+		return
+	}
+	sev.g.Update(func(g *gocui.Gui) error {
+		v, err := g.View("logger")
+		if err != nil {
+			log.Fatalln("fail to create logger, exit")
+		}
+		fmt.Fprintln(v, s)
+		return nil
+	})
+}
+
 // Create a new full node server with connection established. Exit if connection
 // cannot be established.
-func NewFullNodeServer(c config.AppConfig, ps []Peer, addr Address, cmd chan commands.Command) *FullNodeServer {
+func NewFullNodeServer(c config.AppConfig, ps []Peer, addr Address, cmd chan commands.Command, g *gocui.Gui) *FullNodeServer {
 	sev := FullNodeServer{
 		fullNode: NewFullNode(c),
 		peers:    ps,
 		cmd:      cmd,
 		addr:     addr,
 		m:        sync.RWMutex{},
+		g:        g,
 	}
 	for i := 0; i < len(ps); i++ {
 		peer := ps[i]

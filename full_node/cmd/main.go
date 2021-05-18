@@ -11,12 +11,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Luismorlan/btc_in_go/commands"
 	"github.com/Luismorlan/btc_in_go/config"
 	"github.com/Luismorlan/btc_in_go/full_node"
 	"github.com/Luismorlan/btc_in_go/service"
+	"github.com/jroimartin/gocui"
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
 )
@@ -35,24 +35,7 @@ func init() {
 	configPath = flag.String("config_path", "full_node/cmd/config.yaml", "path to full node config")
 }
 
-var iter = 0
-
-func IntensiveCompute(ctl chan commands.Command) commands.Command {
-	iter++
-	log.Println("iteration: ", iter)
-	for i := 0; i <= 5; i++ {
-		select {
-		case c := <-ctl:
-			return c
-		default:
-			log.Println(i)
-			time.Sleep(1 * time.Second)
-		}
-	}
-	log.Println("All task done, return")
-	return commands.Command{Op: commands.RESTART}
-}
-
+// This function parses command from command line.
 func ParseCommand(cmd chan commands.Command) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -82,7 +65,7 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 		switch c.Op {
 		case commands.START:
 			if is_running {
-				log.Print("mining has already been started\n> ")
+				server.Log("mining has already been started")
 				continue
 			}
 			is_running = true
@@ -90,8 +73,7 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 				for {
 					res, err := server.Mine(ctl)
 					if err != nil {
-						log.Print(err)
-						fmt.Print("> ")
+						server.Log(err.Error())
 					}
 					if res.Op == commands.STOP {
 						is_running = false
@@ -101,8 +83,7 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 			}()
 		case commands.RESTART, commands.STOP:
 			if !is_running {
-				log.Print("no running mining task to be restart or shut")
-				fmt.Print("> ")
+				server.Log("no running mining task to be restart or shut")
 				continue
 			}
 			go func() {
@@ -114,29 +95,27 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 			// Add peer to be local client.
 			err := server.AddMutualConnection(c.Args[0], c.Args[1])
 			if err != nil {
-				log.Println("cannot add new peer: ", err)
+				server.Log(fmt.Sprintf("cannot add new peer: %s", err.Error()))
 			}
 		case commands.LIST_PEER:
 			for _, p := range server.GetAllPeers() {
-				fmt.Println(p)
+				server.Log(p.String())
 			}
-			fmt.Print("> ")
 		case commands.SHOW:
 			v, err := strconv.Atoi(c.Args[0])
 			if err != nil {
-				log.Printf("%s is not a valid number for depth", c.Args[0])
+				server.Log(fmt.Sprintf("%s is not a valid number for depth", c.Args[0]))
 			}
 			server.Show(v)
 		case commands.SYNC:
 			go func() {
 				err := server.SyncToLatest()
 				if err != nil {
-					log.Printf("fail to sync to latest: " + err.Error())
+					server.Log(fmt.Sprintf("fail to sync to latest: " + err.Error()))
 				}
 			}()
 		default:
-			log.Print("Unrecognized command:", c)
-			fmt.Print("> ")
+			server.Log(fmt.Sprintf("Unrecognized command: %d", c.Op))
 		}
 	}
 }
@@ -192,6 +171,30 @@ func localAddress() full_node.Address {
 	}
 }
 
+// Return a gui handle if not in debug mode.
+func ListenOnInput(cmd chan commands.Command, debugMode bool) *gocui.Gui {
+	// Choose a fancy GUI
+	if debugMode {
+		go ParseCommand(cmd)
+	} else {
+		g, err := CreateGui(cmd)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		go func() {
+			if err := g.MainLoop(); err != nil {
+				if err == gocui.ErrQuit {
+					g.Close()
+					os.Exit(0)
+				}
+				os.Exit(1)
+			}
+		}()
+		return g
+	}
+	return nil
+}
+
 func main() {
 	flag.Parse()
 
@@ -202,25 +205,26 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	log.Println(*port, *peers, *peerPorts)
 
 	// A command channel that non-blockingly takes external or internal command
 	// and handle it correspondingly.
 	cmd := make(chan commands.Command)
 
+	// Start listening on input.
+	g := ListenOnInput(cmd, cfg.DEBUG_MODE)
+
 	// Create a server with peer, config and a command channel to interrupt mining when tail changes.
-	server := full_node.NewFullNodeServer(cfg, []full_node.Peer{}, localAddress(), cmd)
+	server := full_node.NewFullNodeServer(cfg, []full_node.Peer{}, localAddress(), cmd, g)
 	grpcServer := grpc.NewServer()
 	service.RegisterFullNodeServiceServer(grpcServer, server)
-	log.Println(cfg)
-	log.Printf("Starting to serve at endpoint: %s:%s", la.IpAddr, la.Port)
 
 	// Create 2 routine dedicated for mining.
 	// cmd: Parse string input and create command.
 	// ctl: A separate channel that pass signal to mining routine to interrupt the mining process.
 	// ctl needs to be passed to server in order to let each
-	go ParseCommand(cmd)
+
 	go HandleCommand(cmd, server)
 
+	server.Log(fmt.Sprintf("Starting to serve at endpoint: %s:%s", la.IpAddr, la.Port))
 	grpcServer.Serve(lis)
 }

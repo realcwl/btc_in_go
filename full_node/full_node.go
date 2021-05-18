@@ -5,7 +5,6 @@ import (
 	"crypto/rsa"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/Luismorlan/btc_in_go/commands"
@@ -137,8 +136,8 @@ func (f *FullNode) GetUtxoForPublicKey(pk []byte) model.Ledger {
 // 1. A boolean flag indicating whether a tail change happens. This is needed
 // because depending on the config we might want to remine the blocks on tail change
 // in order not to waste time mining on a deprecated tail.
-// 2. A boolean flag indicating whether a block hanling failure could happen.
 // TODO(chenweilunster): incoparate this flag into the error code.
+// 2. A boolean flag indicating whether a block hanling failure could happen.
 // 3. An error indicating any error happened during mining.
 func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, bool, error) {
 	// Lock mutex because we are changing the state of blockchain.
@@ -152,7 +151,10 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, bool, error)
 
 	tailChange := false
 	// Difficulty and hash should match.
-	utils.MatchDifficulty(pendingBlock, f.config.DIFFICULTY)
+	match, _ := utils.MatchDifficulty(pendingBlock, f.config.DIFFICULTY)
+	if !match {
+		return tailChange, false, errors.New("match difficulty failed for block: " + pendingBlock.Hash)
+	}
 	blockBytes, err := utils.GetBlockBytes(pendingBlock)
 	if err != nil {
 		return tailChange, false, err
@@ -165,9 +167,8 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, bool, error)
 	prevHash := pendingBlock.PrevHash
 	prevBlockWrapper, ok := f.blockchain.Chain[prevHash]
 	if !ok {
-		log.Println("parent block not found in blockchain, parent block hash:", prevHash)
 		// Parent not found in blockchain could signal that we're out of sync.
-		return tailChange, true, errors.New("")
+		return tailChange, true, errors.New("parent block not found in blockchain, parent block hash: " + prevHash)
 	}
 
 	// Calculate its parent depth in the chain. If parent is greater than confirmation, it means
