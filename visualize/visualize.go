@@ -7,6 +7,7 @@ import (
 	"os/exec"
 
 	"github.com/Luismorlan/btc_in_go/model"
+	"github.com/Luismorlan/btc_in_go/utils"
 	"github.com/bradleyjkemp/memviz"
 )
 
@@ -92,7 +93,7 @@ func txToTx(tx *model.Transaction) transaction {
 
 	for i := 0; i < len(tx.Outputs); i++ {
 		out := tx.Outputs[i]
-		t.outputs = append(t.outputs, output{publicKey: shortenPK(string(out.PublicKey)), value: out.Value})
+		t.outputs = append(t.outputs, output{publicKey: shortenPK(utils.BytesToHex(out.PublicKey)), value: out.Value})
 	}
 	return t
 }
@@ -104,7 +105,7 @@ func txToCb(tx *model.Transaction) coinbaseTransaction {
 
 	for i := 0; i < len(tx.Outputs); i++ {
 		out := tx.Outputs[i]
-		cb.outputs = append(cb.outputs, output{publicKey: shortenPK(string(out.PublicKey)), value: out.Value})
+		cb.outputs = append(cb.outputs, output{publicKey: shortenPK(utils.BytesToHex(out.PublicKey)), value: out.Value})
 	}
 
 	cb.height = tx.Height
