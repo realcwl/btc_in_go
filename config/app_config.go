@@ -12,6 +12,4 @@ type AppConfig struct {
 	REMINE_ON_TAIL_CHANGE bool `yaml:"REMINE_ON_TAIL_CHANGE"`
 	// Length of the RSA key, for convenienve 304 is preferred, but 2048 can give us better security.
 	RSA_LEN int64 `yaml:"RSA_LEN"`
-	// Enable debug mode. This mode will disable any fancy GUI and let's you just print error on screen.
-	DEBUG_MODE bool `yaml:"DEBUG_MODE"`
 }

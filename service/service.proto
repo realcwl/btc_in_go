@@ -22,6 +22,9 @@ service FullNodeService {
   // Add a new peer to this full node and create a bidirection connection.
   rpc AddPeer(AddPeerRequest) returns (AddPeerResponse) {}
 
+  // Get all peers this full node knows of.
+  rpc GetPeers(GetPeersRequest) returns (GetPeersResponse) {}
+
   // Return blocks in blockchain to help peers catching up with the system.
   rpc Sync(SyncRequest) returns (SyncResponse) {}
 }
@@ -83,4 +86,11 @@ message SyncResponse {
   repeated Block block = 1;
   // Return true if the chain is fully synced to tail.
   bool synced = 2;
+}
+
+message GetPeersRequest {}
+
+// Return a list of node addresses this full node knows of.
+message GetPeersResponse{
+  repeated NodeAddr node_addrs = 1;
 }

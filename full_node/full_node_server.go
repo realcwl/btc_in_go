@@ -70,6 +70,11 @@ type FullNodeServer struct {
 	g *gocui.Gui
 }
 
+// Get self address.
+func (sev *FullNodeServer) GetAddress() Address {
+	return sev.addr
+}
+
 // Get public key in hex format.
 func (sev *FullNodeServer) GetPublicKey() string {
 	return sev.fullNode.GetPublicKey()
@@ -295,6 +300,7 @@ func (sev *FullNodeServer) AddPeerInternal(req *service.AddPeerRequest) (service
 func (sev *FullNodeServer) RemovePeer(addr Address) {
 	sev.m.Lock()
 	defer sev.m.Unlock()
+
 	for i := 0; i < len(sev.peers); i++ {
 		if sev.peers[i].addr == addr {
 			// Find the peer in peer list and remove it.
@@ -357,6 +363,7 @@ func (sev *FullNodeServer) SetBlock(con context.Context, req *service.SetBlockRe
 	return res, nil
 }
 
+// In sync mode we don't want to broadcast the block to other nodes, in all other cases we do.
 func (sev *FullNodeServer) SetBlockInternal(req *service.SetBlockRequest, broadcast bool) (*service.SetBlockResponse, bool, bool, error) {
 	block := req.Block
 	tailChange, outOfSync, err := sev.fullNode.HandleNewBlock(block)
@@ -392,9 +399,42 @@ func (sev *FullNodeServer) Sync(ctx context.Context, req *service.SyncRequest) (
 	return &service.SyncResponse{Block: blocks, Synced: synced}, nil
 }
 
+// Return all peers this full node knows of.
+func (sev *FullNodeServer) GetPeers(ctx context.Context, req *service.GetPeersRequest) (*service.GetPeersResponse, error) {
+	sev.m.RLock()
+	defer sev.m.RUnlock()
+	res := &service.GetPeersResponse{}
+	for i := 0; i < len(sev.peers); i++ {
+		p := &sev.peers[i]
+		res.NodeAddrs = append(res.NodeAddrs, &service.NodeAddr{IpAddr: p.addr.IpAddr, Port: p.addr.Port})
+	}
+	return res, nil
+}
+
+// Ask the given full node to introduce his peers to me.
+func (sev *FullNodeServer) Introduce(ip string, port string) ([]*service.NodeAddr, error) {
+	var opts []grpc.DialOption
+	opts = append(opts, grpc.WithInsecure())
+
+	// Create a connection to the incoming peer. Close this connection immediatly after return.
+	conn, err := grpc.Dial(ip+":"+port, opts...)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	client := service.NewFullNodeServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	res, err := client.GetPeers(ctx, &service.GetPeersRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return res.NodeAddrs, nil
+}
+
 func (sev *FullNodeServer) Show(d int) {
 	tail := sev.fullNode.GetTail()
-	visualize.Render(tail, d, sev.fullNode.uuid)
+	visualize.RenderBlockChain(tail, d, sev.fullNode.uuid)
 }
 
 // Log the message. If the GUI is not nil, log to GUI, otherwise log to stdout.

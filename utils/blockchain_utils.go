@@ -2,7 +2,6 @@ package utils
 
 import (
 	"errors"
-	"time"
 
 	"github.com/Luismorlan/btc_in_go/commands"
 	"github.com/Luismorlan/btc_in_go/model"
@@ -41,7 +40,7 @@ func CreateNewBlock(txs []*model.Transaction, prevHash string, reward float64, h
 // Always listen for command interruption and stop mining at any time.
 func Mine(block *model.Block, difficulty int, ctl chan commands.Command) (commands.Command, error) {
 	for i := 0; i < int(^uint(0)>>1); i++ {
-		time.Sleep(time.Second)
+		//time.Sleep(time.Second)
 		select {
 		case c := <-ctl:
 			return c, errors.New("terminated by command")

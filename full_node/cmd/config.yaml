@@ -1,6 +1,5 @@
-DIFFICULTY: 1
+DIFFICULTY: 25 # about every 30 seconds per block on a 2020 mbp
 COINBASE_REWARD: 1
 CONFIRMATION: 5
 REMINE_ON_TAIL_CHANGE: true
 RSA_LEN: 304
-DEBUG_MODE: true

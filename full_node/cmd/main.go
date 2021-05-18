@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"container/list"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -16,6 +17,7 @@ import (
 	"github.com/Luismorlan/btc_in_go/config"
 	"github.com/Luismorlan/btc_in_go/full_node"
 	"github.com/Luismorlan/btc_in_go/service"
+	"github.com/Luismorlan/btc_in_go/visualize"
 	"github.com/jroimartin/gocui"
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
@@ -23,18 +25,16 @@ import (
 
 var (
 	port       *string
-	peers      *string
-	peerPorts  *string
 	configPath *string
 	keyPath    *string
+	debugMode  *bool
 )
 
 func init() {
 	port = flag.String("port", "10000", "port to listen to peers and wallet")
-	peers = flag.String("peers", "", "peer ip addresses")
-	peerPorts = flag.String("peer_ports", "", "peer ports")
 	configPath = flag.String("config_path", "full_node/cmd/config.yaml", "path to full node config")
 	keyPath = flag.String("key_path", "/tmp/mykey.pem", "the path to read or write your credentials.")
+	debugMode = flag.Bool("debug_mode", false, "Using debug mode will disable fancy GUI.")
 }
 
 // This function parses command from command line.
@@ -61,16 +61,17 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 	// A separate control is needed to make sure cmd is non-blocking
 	// when we just want to restart task.
 	ctl := make(chan commands.Command, 1)
-	is_running := false
+	is_mining := false
+	is_probing := false
 	for {
 		c := <-cmd
 		switch c.Op {
 		case commands.START:
-			if is_running {
+			if is_mining {
 				server.Log("mining has already been started")
 				continue
 			}
-			is_running = true
+			is_mining = true
 			go func() {
 				for {
 					res, err := server.Mine(ctl)
@@ -78,14 +79,13 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 						server.Log(err.Error())
 					}
 					if res.Op == commands.STOP {
-						is_running = false
+						is_mining = false
 						return
 					}
 				}
 			}()
 		case commands.RESTART, commands.STOP:
-			if !is_running {
-				server.Log("no running mining task to be restart or shut")
+			if !is_mining {
 				continue
 			}
 			go func() {
@@ -94,6 +94,11 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 				ctl <- c
 			}()
 		case commands.ADD_PEER:
+			self_addr := server.GetAddress()
+			if self_addr.IpAddr == c.Args[0] && self_addr.Port == c.Args[1] {
+				server.Log("cannot add self as peer")
+				continue
+			}
 			// Add peer to be local client.
 			err := server.AddMutualConnection(c.Args[0], c.Args[1])
 			if err != nil {
@@ -118,10 +123,61 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 			}()
 		case commands.KEY:
 			server.Log("\n===============DO NOT COPY THIS LINE================\n" + server.GetPublicKey() + "\n===============DO NOT COPY THIS LINE================")
+		case commands.INTRODUCE:
+			peers, err := server.Introduce(c.Args[0], c.Args[1])
+			if err != nil {
+				server.Log("fail to get introduced: " + err.Error())
+			}
+			s := c.Args[0] + ":" + c.Args[1] + " has peers ==>"
+			for i := 0; i < len(peers); i++ {
+				peer := peers[i]
+				s = s + "\n" + peer.IpAddr + ":" + peer.Port
+			}
+			server.Log(s)
+		case commands.NETWORK:
+			go func() {
+				if is_probing {
+					server.Log("there's ongoing probing..")
+					return
+				}
+				is_probing = true
+				g := ProbNetwork(server)
+				visualize.RenderGraph(g)
+				is_probing = false
+			}()
 		default:
 			server.Log(fmt.Sprintf("Unrecognized command: %d", c.Op))
 		}
 	}
+}
+
+// Prob the network in a BFS manner and construct the network graph.
+func ProbNetwork(server *full_node.FullNodeServer) *visualize.Graph {
+	seen := make(map[visualize.Address]bool)
+	g := visualize.NewGraph()
+	self := server.GetAddress()
+	todo := list.New()
+	todo.PushBack(visualize.NewAddress(self.IpAddr, self.Port))
+	for todo.Len() != 0 {
+		self_addr := todo.Front().Value.(visualize.Address)
+		todo.Remove(todo.Front())
+		if seen[self_addr] {
+			continue
+		}
+		seen[self_addr] = true
+
+		peer_addrs, err := server.Introduce(self_addr.Ip, self_addr.Port)
+		if err != nil {
+			continue
+		}
+		self := g.GetNode(self_addr)
+		for i := 0; i < len(peer_addrs); i++ {
+			peer := g.GetNode(visualize.NewAddress(peer_addrs[i].IpAddr, peer_addrs[i].Port))
+			self.AddPeer(peer)
+			todo.PushBack(visualize.NewAddress(peer_addrs[i].IpAddr, peer_addrs[i].Port))
+		}
+	}
+	return g
 }
 
 func ParseAppConfig(path string) config.AppConfig {
@@ -215,7 +271,7 @@ func main() {
 	cmd := make(chan commands.Command)
 
 	// Start listening on input.
-	g := ListenOnInput(cmd, cfg.DEBUG_MODE)
+	g := ListenOnInput(cmd, *debugMode)
 
 	// Create a server with peer, config and a command channel to interrupt mining when tail changes.
 	server := full_node.NewFullNodeServer(cfg, []full_node.Peer{}, localAddress(), *keyPath, cmd, g)

@@ -33,6 +33,10 @@ const (
 	SYNC
 	// Show your public key in hex string.
 	KEY
+	// Ask a full node to return all its peers.
+	INTRODUCE
+	// Show all the full node it can reach if it broadcast a transaction.
+	NETWORK
 )
 
 // A command contains a operation and many arguments.
@@ -43,9 +47,9 @@ type Command struct {
 
 func (c Command) IsValid() bool {
 	switch c.Op {
-	case START, RESTART, STOP, LIST_PEER, KEY:
+	case START, RESTART, STOP, LIST_PEER, KEY, NETWORK:
 		return len(c.Args) == 0
-	case ADD_PEER, REMOVE_PEER:
+	case ADD_PEER, REMOVE_PEER, INTRODUCE:
 		if len(c.Args) != 2 {
 			return false
 		}
@@ -95,6 +99,10 @@ func CreateCommand(s string) (Command, error) {
 		cmd.Op = SHOW
 	case "key":
 		cmd.Op = KEY
+	case "introduce":
+		cmd.Op = INTRODUCE
+	case "network":
+		cmd.Op = NETWORK
 	}
 	cmd.Args = ss[1:]
 	if !cmd.IsValid() {
