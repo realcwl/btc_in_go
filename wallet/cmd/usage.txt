@@ -1,0 +1,9 @@
+Instruction on Usage
+1. Show Public Key in Hex
+$ my_pk
+
+2. Get balance for this public key
+$ get_balance
+
+3. Transfer to another PK
+$ transfer PEER_PUBLIC_KEY_HEX AMOUNT

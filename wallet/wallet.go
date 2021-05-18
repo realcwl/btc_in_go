@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/rsa"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/Luismorlan/btc_in_go/model"
 	"github.com/Luismorlan/btc_in_go/service"
 	"github.com/Luismorlan/btc_in_go/utils"
+	"github.com/jroimartin/gocui"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 )
@@ -22,7 +24,13 @@ type Wallet struct {
 	keys *rsa.PrivateKey
 	// The client to connect to FullNode server.
 	client service.FullNodeServiceClient
-	UTXOs  map[model.UTXOLite]*model.Output
+	// gRPC connection this client has.
+	conn *grpc.ClientConn
+	// The balance. Updated every Transfer and GetBalance.
+	UTXOs map[model.UTXOLite]*model.Output
+
+	// A command fancy place to put output.
+	g *gocui.Gui
 }
 
 // Return my public key in hex string.
@@ -42,14 +50,18 @@ func (w *Wallet) GetTotalDeposit() (float64, error) {
 	return v, nil
 }
 
-func (w *Wallet) SetFullNodeConnection(ipAddr string, port string) {
+func (w *Wallet) SetFullNodeConnection(ipAddr string, port string) error {
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithInsecure())
 	serverAddr := ipAddr + ":" + port
 	conn, err := grpc.Dial(serverAddr, opts...)
 	if err != nil {
-		log.Fatal("failed to dial", serverAddr, err)
+		return err
 	}
+	if w.conn != nil {
+		w.conn.Close()
+	}
+	w.conn = conn
 	w.client = service.NewFullNodeServiceClient(conn)
 
 	// Spin up a process that GC idle connection, we GC the client in a
@@ -77,10 +89,10 @@ func (w *Wallet) SetFullNodeConnection(ipAddr string, port string) {
 				break
 			}
 		}
-		log.Printf("close dead fullnode connection: %s:%s", ipAddr, port)
-		conn.Close()
-		w.client = nil
+		w.Log(fmt.Sprintf("close dead fullnode connection: %s:%s", ipAddr, port))
 	}()
+
+	return nil
 }
 
 // Blocking call to get balance of current public key. The balance is represented
@@ -89,8 +101,8 @@ func (w *Wallet) GetBalance() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	pk := utils.PublicKeyToBytes(&w.keys.PublicKey)
-	if w.client == nil {
-		return errors.New("no available connection to fullnode")
+	if w.client == nil || w.conn.GetState() != connectivity.Ready {
+		return errors.New("no available connection to fullnode, fullnode might shutdown or unstable network")
 	}
 	res, err := w.client.GetBalance(ctx, &service.GetBalanceRequest{PublicKey: pk})
 	if err != nil {
@@ -136,8 +148,8 @@ func (w *Wallet) TransferMoney(receiver string, value float64) error {
 func (w *Wallet) SendTransaction(tx *model.Transaction) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if w.client == nil {
-		return errors.New("no available connection to fullnode")
+	if w.client == nil || w.conn.GetState() != connectivity.Ready {
+		return errors.New("no available connection to fullnode, fullnode might shutdown or unstable network")
 	}
 	_, err := w.client.SetTransaction(ctx, &service.SetTransactionRequest{Tx: tx})
 	if err != nil {
@@ -146,13 +158,30 @@ func (w *Wallet) SendTransaction(tx *model.Transaction) error {
 	return nil
 }
 
+// Log the message. If the GUI is not nil, log to GUI, otherwise log to stdout.
+func (w *Wallet) Log(s string) {
+	if w.g == nil {
+		log.Println(s)
+		return
+	}
+	w.g.Update(func(g *gocui.Gui) error {
+		v, err := g.View("logger")
+		if err != nil {
+			log.Fatalln("fail to create logger, exit")
+		}
+		fmt.Fprintln(v, s)
+		return nil
+	})
+}
+
 // Create a new wallet from given credentials.
-func NewWallet(path string, ipAddr string, port string) *Wallet {
+func NewWallet(path string, g *gocui.Gui) *Wallet {
 	wallet := &Wallet{
 		UTXOs: make(map[model.UTXOLite]*model.Output),
 		// TODO: refactor this into a client config.
 		keys: utils.ParseKeyFile(path, 304),
+		g:    g,
 	}
-	wallet.SetFullNodeConnection(ipAddr, port)
+
 	return wallet
 }

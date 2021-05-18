@@ -1,4 +1,4 @@
-package main
+package layout
 
 import (
 	"fmt"
@@ -25,9 +25,14 @@ type PastCmd struct {
 }
 
 // Input box for command.
-type Input struct {
+type FullNodeInput struct {
 	name string
 	cmd  chan commands.Command
+}
+
+type WalletInput struct {
+	name string
+	cmd  chan commands.ClientCommand
 }
 
 type Logger struct {
@@ -36,12 +41,13 @@ type Logger struct {
 
 type Manual struct {
 	name string
+	path string
 }
 
 func (pc *PastCmd) Layout(g *gocui.Gui) error {
 	maxX, maxY := g.Size()
 	// Bottom left corner.
-	v, _ := g.SetView(pc.name, 1, maxY*2/3, maxX/3, maxY-4)
+	v, _ := g.SetView(pc.name, 1, maxY*2/3, maxX/3, maxY-6)
 	v.Autoscroll = true
 	v.Wrap = true
 
@@ -55,14 +61,28 @@ func (pc *PastCmd) Layout(g *gocui.Gui) error {
 	return nil
 }
 
-func (i *Input) Layout(g *gocui.Gui) error {
+func (i *FullNodeInput) Layout(g *gocui.Gui) error {
 	maxX, maxY := g.Size()
 	// Bottom left.
-	v, err := g.SetView(i.name, 1, maxY-3, maxX/3, maxY-1)
+	v, err := g.SetView(i.name, 1, maxY-5, maxX/3, maxY-1)
 	if err != nil && err != gocui.ErrUnknownView {
 		return err
 	}
+	v.Wrap = true
 	v.Editor = i
+	v.Editable = true
+	return nil
+}
+
+func (w *WalletInput) Layout(g *gocui.Gui) error {
+	maxX, maxY := g.Size()
+	// Bottom left.
+	v, err := g.SetView(w.name, 1, maxY-5, maxX/3, maxY-1)
+	if err != nil && err != gocui.ErrUnknownView {
+		return err
+	}
+	v.Wrap = true
+	v.Editor = w
 	v.Editable = true
 	return nil
 }
@@ -83,7 +103,7 @@ func (m *Manual) Layout(g *gocui.Gui) error {
 	v.Autoscroll = true
 	v.Wrap = true
 	v.Clear()
-	dat, err := ioutil.ReadFile("full_node/cmd/usage.txt")
+	dat, err := ioutil.ReadFile(m.path)
 	if err != nil {
 		g.Close()
 		log.Fatal(err)
@@ -92,11 +112,7 @@ func (m *Manual) Layout(g *gocui.Gui) error {
 	return nil
 }
 
-func (i *Input) Edit(v *gocui.View, key gocui.Key, ch rune, mod gocui.Modifier) {
-	cx, _ := v.Cursor()
-	ox, _ := v.Origin()
-	length, _ := v.Size()
-	limit := ox+cx+1 > length
+func (i *FullNodeInput) Edit(v *gocui.View, key gocui.Key, ch rune, mod gocui.Modifier) {
 	switch {
 	case key == gocui.KeyEnter:
 		// Read buffer.
@@ -107,7 +123,7 @@ func (i *Input) Edit(v *gocui.View, key gocui.Key, ch rune, mod gocui.Modifier) 
 		command.m.Lock()
 		command.str = s
 		if err != nil {
-			command.str = s + err.Error()
+			command.str = s + "\n" + err.Error()
 		}
 		command.ready = true
 		command.m.Unlock()
@@ -121,9 +137,43 @@ func (i *Input) Edit(v *gocui.View, key gocui.Key, ch rune, mod gocui.Modifier) 
 		v.SetOrigin(0, 0)
 		v.SetCursor(0, 0)
 
-	case ch != 0 && mod == 0 && !limit:
+	case ch != 0 && mod == 0:
 		v.EditWrite(ch)
-	case key == gocui.KeySpace && !limit:
+	case key == gocui.KeySpace:
+		v.EditWrite(' ')
+	case key == gocui.KeyBackspace || key == gocui.KeyBackspace2:
+		v.EditDelete(true)
+	}
+}
+
+func (w *WalletInput) Edit(v *gocui.View, key gocui.Key, ch rune, mod gocui.Modifier) {
+	switch {
+	case key == gocui.KeyEnter:
+		// Read buffer.
+		s := v.Buffer()
+		// Remove \n from string.
+		s = strings.Replace(s, "\n", "", -1)
+		op, err := commands.CreateClientCommand(s)
+		command.m.Lock()
+		command.str = s
+		if err != nil {
+			command.str = s + "\n" + err.Error()
+		}
+		command.ready = true
+		command.m.Unlock()
+		if err == nil {
+			// If a valid command, send to fullnode for processing.
+			w.cmd <- op
+		}
+
+		// Reset cursor.
+		v.Clear()
+		v.SetOrigin(0, 0)
+		v.SetCursor(0, 0)
+
+	case ch != 0 && mod == 0:
+		v.EditWrite(ch)
+	case key == gocui.KeySpace:
 		v.EditWrite(' ')
 	case key == gocui.KeyBackspace || key == gocui.KeyBackspace2:
 		v.EditDelete(true)
@@ -138,7 +188,17 @@ func SetFocus(name string) func(g *gocui.Gui) error {
 }
 
 // Create a GUI, using the command channel to pass command to fullnode.
-func CreateGui(cmd chan commands.Command) (*gocui.Gui, error) {
+func CreateGui(cmd interface{}, manual_path string) (*gocui.Gui, error) {
+	is_full_node := true
+	switch cmd.(type) {
+	case chan commands.Command:
+		is_full_node = true
+	case chan commands.ClientCommand:
+		is_full_node = false
+	default:
+		log.Fatalln("invalid command channel")
+	}
+
 	g, err := gocui.NewGui(gocui.OutputNormal)
 	if err != nil {
 		return nil, err
@@ -146,12 +206,17 @@ func CreateGui(cmd chan commands.Command) (*gocui.Gui, error) {
 
 	g.Cursor = true
 
-	input := &Input{name: "input", cmd: cmd}
 	pc := &PastCmd{name: "pastcommand"}
 	l := &Logger{name: "logger"}
-	m := &Manual{name: "manual"}
+	m := &Manual{name: "manual", path: manual_path}
 	focus := gocui.ManagerFunc(SetFocus("input"))
-	g.SetManager(pc, input, l, m, focus)
+	if is_full_node {
+		input := &FullNodeInput{name: "input", cmd: cmd.(chan commands.Command)}
+		g.SetManager(pc, input, l, m, focus)
+	} else {
+		input := &WalletInput{name: "input", cmd: cmd.(chan commands.ClientCommand)}
+		g.SetManager(pc, input, l, m, focus)
+	}
 
 	if err := g.SetKeybinding("", gocui.KeyCtrlC, gocui.ModNone, quit); err != nil {
 		log.Panicln(err)

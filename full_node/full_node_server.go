@@ -135,7 +135,6 @@ func (sev *FullNodeServer) SetTransaction(con context.Context, req *service.SetT
 func (sev *FullNodeServer) GetBalance(ctx context.Context, req *service.GetBalanceRequest) (*service.GetBalanceResponse, error) {
 	pk := req.PublicKey
 	l := sev.fullNode.GetUtxoForPublicKey(pk)
-	sev.Log(fmt.Sprintf("read UTXO: %d", len(l.L)))
 	res := service.GetBalanceResponse{}
 	for utxoLite, output := range l.L {
 		utxo := model.GetUtxo(&utxoLite)
@@ -145,7 +144,6 @@ func (sev *FullNodeServer) GetBalance(ctx context.Context, req *service.GetBalan
 		}
 		res.UtxoOutputPairs = append(res.UtxoOutputPairs, &pair)
 	}
-	sev.Log(fmt.Sprintf("returned UTXO size is: %d", len(res.GetUtxoOutputPairs())))
 	return &res, nil
 }
 

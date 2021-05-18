@@ -10,36 +10,62 @@ import (
 	"strings"
 
 	"github.com/Luismorlan/btc_in_go/commands"
+	"github.com/Luismorlan/btc_in_go/layout"
 	"github.com/Luismorlan/btc_in_go/wallet"
+	"github.com/jroimartin/gocui"
 )
 
 var (
-	keyPath *string
-	ipAddr  *string
-	port    *string
+	keyPath   *string
+	debugMode *bool
 )
 
 func init() {
 	keyPath = flag.String("key_path", "/tmp/mykey.pem", "RSA file path for your private key")
-	ipAddr = flag.String("ip_addr", "127.0.0.1", "Fullnode's IPv4 address")
-	port = flag.String("port", "10010", "Fullnode's TCP port number for connection")
+	debugMode = flag.Bool("debug_mode", false, "Using debug mode will disable fancy GUI.")
+}
+
+// Return a gui handle if not in debug mode.
+func ListenOnInput(cmd chan commands.ClientCommand, debugMode bool) *gocui.Gui {
+	// Choose a fancy GUI
+	if debugMode {
+		go ParseCommand(cmd)
+		return nil
+	}
+	g, err := layout.CreateGui(cmd, "wallet/cmd/usage.txt")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	go func() {
+		if err := g.MainLoop(); err != nil {
+			if err == gocui.ErrQuit {
+				g.Close()
+				os.Exit(0)
+			}
+			os.Exit(1)
+		}
+	}()
+	return g
+
 }
 
 func main() {
 	flag.Parse()
 	fmt.Println("keyPath is", *keyPath)
 
-	wallet := wallet.NewWallet(*keyPath, *ipAddr, *port)
-	fmt.Println("connected to fullnode endpoint: ", *ipAddr+":"+*port)
-
 	cmd := make(chan commands.ClientCommand)
-	go ParseCommand(cmd)
+	// Start listening on input.
+	g := ListenOnInput(cmd, *debugMode)
+	wallet := wallet.NewWallet(*keyPath, g)
+	wallet.Log("Wallet public key: " + wallet.GetPublicKey())
+
 	go HandleCommand(cmd, wallet)
 
 	c := make(chan int)
 	<-c
 }
 
+// Parse command from stdio.
 func ParseCommand(cmd chan commands.ClientCommand) {
 	for {
 		reader := bufio.NewReader(os.Stdin)
@@ -65,33 +91,30 @@ func HandleCommand(cmd chan commands.ClientCommand, wallet *wallet.Wallet) {
 			value, _ := strconv.ParseFloat(c.Args[1], 64)
 			err := wallet.TransferMoney(receiverPK, value)
 			if err != nil {
-				log.Println("fail to transfer money: ", err)
+				wallet.Log("fail to transfer money: " + err.Error())
 				continue
 			}
-			log.Printf("successfully send transaction to fullnode, receiver: %s, value: %f", receiverPK, value)
+			wallet.Log(fmt.Sprintf("successfully send transaction to fullnode, receiver: %s, value: %f", receiverPK, value))
 		case commands.MY_PK:
-			fmt.Println(wallet.GetPublicKey())
-			/*
-				case commands.CONNECT_FULL_NODE:
-
-						ipAddr := c.Args[0]
-						port := c.Args[1]
-						wallet.SetFullNodeConnection(ipAddr, port)
-						if err != nil {
-							log.Printf("failed to connect to full node address %s", ipAddr+":"+port)
-							continue
-						}
-						log.Printf("Full node %s connected", ipAddr+":"+port)
-			*/
+			wallet.Log("\n===============DO NOT COPY THIS LINE================\n" + wallet.GetPublicKey() + "\n===============DO NOT COPY THIS LINE================")
+		case commands.CONNECT:
+			ipAddr := c.Args[0]
+			port := c.Args[1]
+			err := wallet.SetFullNodeConnection(ipAddr, port)
+			if err != nil {
+				wallet.Log("failed to connect to full node endpoint " + ipAddr + ":" + port)
+				continue
+			}
+			wallet.Log("connected full node endpoint " + ipAddr + ":" + port)
 		case commands.GET_BALANCE:
 			v, err := wallet.GetTotalDeposit()
 			if err != nil {
-				log.Println("fail to get balance: " + err.Error())
+				wallet.Log("fail to get balance: " + err.Error())
 				continue
 			}
-			log.Println("your total balance is: ", v)
+			wallet.Log(fmt.Sprintf("your total balance is: %f", v))
 		default:
-			log.Println("Unhandled command:", c)
+			wallet.Log(fmt.Sprintf("Unimplemented command: %d", c.Op))
 		}
 	}
 }

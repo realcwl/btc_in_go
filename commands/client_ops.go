@@ -2,7 +2,6 @@ package commands
 
 import (
 	"errors"
-	"log"
 	"net"
 	"regexp"
 	"strconv"
@@ -17,7 +16,7 @@ const (
 	// Print user public key
 	MY_PK
 	// Connect a full node with ip address and port
-	CONNECT_FULL_NODE
+	CONNECT
 	// Get my own balance
 	GET_BALANCE
 )
@@ -36,12 +35,12 @@ func (c ClientCommand) IsValid() bool {
 		value := c.Args[1]
 		v, err := strconv.ParseFloat(value, 64)
 		if err != nil {
-			log.Println(err)
+			return false
 		}
 		return err == nil && v > 0
 	case MY_PK, GET_BALANCE:
 		return len(c.Args) == 0
-	case CONNECT_FULL_NODE:
+	case CONNECT:
 		if len(c.Args) != 2 {
 			return false
 		}
@@ -69,7 +68,7 @@ func CreateClientCommand(s string) (ClientCommand, error) {
 	case "my_pk":
 		cmd.Op = MY_PK
 	case "connect":
-		cmd.Op = CONNECT_FULL_NODE
+		cmd.Op = CONNECT
 	case "get_balance":
 		cmd.Op = GET_BALANCE
 	default:

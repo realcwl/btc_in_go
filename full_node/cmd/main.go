@@ -16,6 +16,7 @@ import (
 	"github.com/Luismorlan/btc_in_go/commands"
 	"github.com/Luismorlan/btc_in_go/config"
 	"github.com/Luismorlan/btc_in_go/full_node"
+	"github.com/Luismorlan/btc_in_go/layout"
 	"github.com/Luismorlan/btc_in_go/service"
 	"github.com/Luismorlan/btc_in_go/visualize"
 	"github.com/jroimartin/gocui"
@@ -237,7 +238,7 @@ func ListenOnInput(cmd chan commands.Command, debugMode bool) *gocui.Gui {
 	if debugMode {
 		go ParseCommand(cmd)
 	} else {
-		g, err := CreateGui(cmd)
+		g, err := layout.CreateGui(cmd, "full_node/cmd/usage.txt")
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -266,6 +267,8 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
+	grpcServer := grpc.NewServer()
+
 	// A command channel that non-blockingly takes external or internal command
 	// and handle it correspondingly.
 	cmd := make(chan commands.Command)
@@ -275,7 +278,6 @@ func main() {
 
 	// Create a server with peer, config and a command channel to interrupt mining when tail changes.
 	server := full_node.NewFullNodeServer(cfg, []full_node.Peer{}, localAddress(), *keyPath, cmd, g)
-	grpcServer := grpc.NewServer()
 	service.RegisterFullNodeServiceServer(grpcServer, server)
 
 	// Create 2 routine dedicated for mining.
