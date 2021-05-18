@@ -11,7 +11,6 @@ import (
 	"github.com/Luismorlan/btc_in_go/config"
 	"github.com/Luismorlan/btc_in_go/model"
 	"github.com/Luismorlan/btc_in_go/utils"
-	"github.com/jinzhu/copier"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -35,9 +34,9 @@ type FullNode struct {
 }
 
 // Create a brand new full node, which contains a genesis block in the chain.
-func NewFullNode(c config.AppConfig) *FullNode {
+func NewFullNode(c config.AppConfig, path string) *FullNode {
 	myuuid := uuid.NewV4()
-	sk, _ := utils.GenerateKeyPair(2048)
+	sk := utils.ParseKeyFile(path, int(c.RSA_LEN))
 	return &FullNode{
 		blockchain: model.NewBlockChain(),
 		txPool:     model.NewTransactionPool(),
@@ -46,6 +45,11 @@ func NewFullNode(c config.AppConfig) *FullNode {
 		m:          sync.RWMutex{},
 		uuid:       myuuid.String(),
 	}
+}
+
+// Return public key in hex format.
+func (f *FullNode) GetPublicKey() string {
+	return utils.BytesToHex(utils.PublicKeyToBytes(&f.keys.PublicKey))
 }
 
 func (f *FullNode) AddTransactionToPool(tx *model.Transaction) error {
@@ -59,11 +63,10 @@ func (f *FullNode) AddTransactionToPool(tx *model.Transaction) error {
 	return nil
 }
 
-// Return a deep copy of the ledger at tail.
+// Return a deep copy of the ledger at given depth.
 func (f *FullNode) GetLedgerSnapshotAtDepth(depth int64) *model.Ledger {
 	f.m.RLock()
 	defer f.m.RUnlock()
-	l := model.NewLedger()
 
 	tail := f.blockchain.Tail
 	for i := 0; i < int(depth); i++ {
@@ -72,7 +75,7 @@ func (f *FullNode) GetLedgerSnapshotAtDepth(depth int64) *model.Ledger {
 		}
 		tail = tail.Parent
 	}
-	copier.Copy(&l, tail.L)
+	l := utils.GetLedgerDeepCopy(tail.L)
 	return l
 }
 
@@ -83,9 +86,8 @@ func (f *FullNode) GetLedgerSnapshotAtDepth(depth int64) *model.Ledger {
 func (f *FullNode) CreateNewBlock(ctl chan commands.Command, height int64) (*model.Block, commands.Command, error) {
 	// Lock the transaction pool for reading.
 	f.m.RLock()
-	l := model.NewLedger()
 	// Make a deepcopy of the ledger at tail.
-	copier.Copy(l, f.blockchain.Tail.L)
+	l := utils.GetLedgerDeepCopy(f.blockchain.Tail.L)
 	tail := f.blockchain.Tail
 	txs := utils.GetAllTxsInPool(f.txPool)
 	// Mining is a really heavy task
@@ -180,8 +182,7 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, bool, error)
 	}
 
 	// Here we need to make a deep copy of the entire previous block's ledger because we are chaning it.
-	l := model.NewLedger()
-	copier.Copy(&l, &prevBlockWrapper.L)
+	l := utils.GetLedgerDeepCopy(prevBlockWrapper.L)
 	// Total transaction fee.
 	fee, err := utils.CalcTxFee(pendingBlock.Txs, l)
 	if err != nil {
@@ -194,11 +195,12 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, bool, error)
 		return tailChange, false, err
 	}
 
-	// Handle all transactions and coinbase.
-	err = utils.HandleTransactions(append(pendingBlock.Txs, pendingBlock.Coinbase), l)
+	// Handle all non-coinbase transactions and process Coinbase.
+	err = utils.HandleTransactions(pendingBlock.Txs, l)
 	if err != nil {
 		return tailChange, false, err
 	}
+	utils.ProcessInputsAndOutputs(pendingBlock.Coinbase, l)
 
 	// Add block to blockchain and remove all transaction from the Tx pool.
 	blockWrapper := model.BlockWrapper{

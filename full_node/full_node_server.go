@@ -70,6 +70,11 @@ type FullNodeServer struct {
 	g *gocui.Gui
 }
 
+// Get public key in hex format.
+func (sev *FullNodeServer) GetPublicKey() string {
+	return sev.fullNode.GetPublicKey()
+}
+
 // Return all current peers.
 func (sev *FullNodeServer) GetAllPeers() []Peer {
 	sev.m.RLock()
@@ -125,6 +130,7 @@ func (sev *FullNodeServer) SetTransaction(con context.Context, req *service.SetT
 func (sev *FullNodeServer) GetBalance(ctx context.Context, req *service.GetBalanceRequest) (*service.GetBalanceResponse, error) {
 	pk := req.PublicKey
 	l := sev.fullNode.GetUtxoForPublicKey(pk)
+	sev.Log(fmt.Sprintf("read UTXO: %d", len(l.L)))
 	res := service.GetBalanceResponse{}
 	for utxoLite, output := range l.L {
 		utxo := model.GetUtxo(&utxoLite)
@@ -134,6 +140,7 @@ func (sev *FullNodeServer) GetBalance(ctx context.Context, req *service.GetBalan
 		}
 		res.UtxoOutputPairs = append(res.UtxoOutputPairs, &pair)
 	}
+	sev.Log(fmt.Sprintf("returned UTXO size is: %d", len(res.GetUtxoOutputPairs())))
 	return &res, nil
 }
 
@@ -408,9 +415,9 @@ func (sev *FullNodeServer) Log(s string) {
 
 // Create a new full node server with connection established. Exit if connection
 // cannot be established.
-func NewFullNodeServer(c config.AppConfig, ps []Peer, addr Address, cmd chan commands.Command, g *gocui.Gui) *FullNodeServer {
+func NewFullNodeServer(c config.AppConfig, ps []Peer, addr Address, keyPath string, cmd chan commands.Command, g *gocui.Gui) *FullNodeServer {
 	sev := FullNodeServer{
-		fullNode: NewFullNode(c),
+		fullNode: NewFullNode(c, keyPath),
 		peers:    ps,
 		cmd:      cmd,
 		addr:     addr,

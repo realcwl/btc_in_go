@@ -26,6 +26,7 @@ var (
 	peers      *string
 	peerPorts  *string
 	configPath *string
+	keyPath    *string
 )
 
 func init() {
@@ -33,6 +34,7 @@ func init() {
 	peers = flag.String("peers", "", "peer ip addresses")
 	peerPorts = flag.String("peer_ports", "", "peer ports")
 	configPath = flag.String("config_path", "full_node/cmd/config.yaml", "path to full node config")
+	keyPath = flag.String("key_path", "/tmp/mykey.pem", "the path to read or write your credentials.")
 }
 
 // This function parses command from command line.
@@ -114,6 +116,8 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 					server.Log(fmt.Sprintf("fail to sync to latest: " + err.Error()))
 				}
 			}()
+		case commands.KEY:
+			server.Log("\n===============DO NOT COPY THIS LINE================\n" + server.GetPublicKey() + "\n===============DO NOT COPY THIS LINE================")
 		default:
 			server.Log(fmt.Sprintf("Unrecognized command: %d", c.Op))
 		}
@@ -214,7 +218,7 @@ func main() {
 	g := ListenOnInput(cmd, cfg.DEBUG_MODE)
 
 	// Create a server with peer, config and a command channel to interrupt mining when tail changes.
-	server := full_node.NewFullNodeServer(cfg, []full_node.Peer{}, localAddress(), cmd, g)
+	server := full_node.NewFullNodeServer(cfg, []full_node.Peer{}, localAddress(), *keyPath, cmd, g)
 	grpcServer := grpc.NewServer()
 	service.RegisterFullNodeServiceServer(grpcServer, server)
 

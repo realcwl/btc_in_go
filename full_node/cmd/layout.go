@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"strings"
 	"sync"
@@ -33,10 +34,14 @@ type Logger struct {
 	name string
 }
 
+type Manual struct {
+	name string
+}
+
 func (pc *PastCmd) Layout(g *gocui.Gui) error {
 	maxX, maxY := g.Size()
 	// Bottom left corner.
-	v, _ := g.SetView(pc.name, 1, maxY/3, maxX/3, maxY-4)
+	v, _ := g.SetView(pc.name, 1, maxY*2/3, maxX/3, maxY-4)
 	v.Autoscroll = true
 	v.Wrap = true
 
@@ -68,6 +73,22 @@ func (l *Logger) Layout(g *gocui.Gui) error {
 	v, _ := g.SetView(l.name, maxX/3+1, 1, maxX-1, maxY-1)
 	v.Autoscroll = true
 	v.Wrap = true
+	return nil
+}
+
+func (m *Manual) Layout(g *gocui.Gui) error {
+	maxX, maxY := g.Size()
+	// Bottom left corner.
+	v, _ := g.SetView(m.name, 1, 1, maxX/3, maxY*2/3-1)
+	v.Autoscroll = true
+	v.Wrap = true
+	v.Clear()
+	dat, err := ioutil.ReadFile("full_node/cmd/usage.txt")
+	if err != nil {
+		g.Close()
+		log.Fatal(err)
+	}
+	fmt.Fprintln(v, string(dat))
 	return nil
 }
 
@@ -128,8 +149,9 @@ func CreateGui(cmd chan commands.Command) (*gocui.Gui, error) {
 	input := &Input{name: "input", cmd: cmd}
 	pc := &PastCmd{name: "pastcommand"}
 	l := &Logger{name: "logger"}
+	m := &Manual{name: "manual"}
 	focus := gocui.ManagerFunc(SetFocus("input"))
-	g.SetManager(pc, input, l, focus)
+	g.SetManager(pc, input, l, m, focus)
 
 	if err := g.SetKeybinding("", gocui.KeyCtrlC, gocui.ModNone, quit); err != nil {
 		log.Panicln(err)

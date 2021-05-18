@@ -2,13 +2,12 @@ package commands
 
 import (
 	"errors"
+	"log"
 	"net"
 	"regexp"
+	"strconv"
 	"strings"
 )
-
-const PK_REGEX = "[0-9|a-f]{136}"
-const VALUE_REGEX = "[0-9]+[.]?[0-9]*"
 
 const (
 	// do nothing operation
@@ -16,9 +15,11 @@ const (
 	// Initiate a money transfer from wallet
 	TRANSFER
 	// Print user public key
-	MY_PUBLIC_KEY
+	MY_PK
 	// Connect a full node with ip address and port
 	CONNECT_FULL_NODE
+	// Get my own balance
+	GET_BALANCE
 )
 
 type ClientCommand struct {
@@ -32,12 +33,13 @@ func (c ClientCommand) IsValid() bool {
 		if len(c.Args) != 2 {
 			return false
 		}
-		receiverPK := c.Args[0]
 		value := c.Args[1]
-		pkRegex, _ := regexp.Compile(PK_REGEX)
-		valueRegex, _ := regexp.Compile(VALUE_REGEX)
-		return pkRegex.Match([]byte(receiverPK)) && valueRegex.Match([]byte(value))
-	case MY_PUBLIC_KEY:
+		v, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			log.Println(err)
+		}
+		return err == nil && v > 0
+	case MY_PK, GET_BALANCE:
 		return len(c.Args) == 0
 	case CONNECT_FULL_NODE:
 		if len(c.Args) != 2 {
@@ -64,10 +66,12 @@ func CreateClientCommand(s string) (ClientCommand, error) {
 	switch ss[0] {
 	case "transfer":
 		cmd.Op = TRANSFER
-	case "mypk":
-		cmd.Op = MY_PUBLIC_KEY
+	case "my_pk":
+		cmd.Op = MY_PK
 	case "connect":
 		cmd.Op = CONNECT_FULL_NODE
+	case "get_balance":
+		cmd.Op = GET_BALANCE
 	default:
 		cmd.Op = NOOP
 	}

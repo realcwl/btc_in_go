@@ -3,6 +3,7 @@ package wallet
 import (
 	"context"
 	"crypto/rsa"
+	"errors"
 	"log"
 	"time"
 
@@ -10,71 +11,124 @@ import (
 	"github.com/Luismorlan/btc_in_go/service"
 	"github.com/Luismorlan/btc_in_go/utils"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 )
 
 // User signs and sends transactions to network.
+// We don't need any mutex to protect the private members of this Wallet because all
+// operations are linear. No concurrent operation is supported.
 type Wallet struct {
-	Keys           *rsa.PrivateKey
-	FullNodeClient service.FullNodeServiceClient
-	UTXOs          map[model.UTXOLite]*model.Output
+	// The credential (sk, pk) of this wallet.
+	keys *rsa.PrivateKey
+	// The client to connect to FullNode server.
+	client service.FullNodeServiceClient
+	UTXOs  map[model.UTXOLite]*model.Output
 }
 
-func (w *Wallet) SetFullNodeConnection(ipAddr string, port string) error {
+// Return my public key in hex string.
+func (w *Wallet) GetPublicKey() string {
+	return utils.BytesToHex(utils.PublicKeyToBytes(&w.keys.PublicKey))
+}
+
+func (w *Wallet) GetTotalDeposit() (float64, error) {
+	err := w.GetBalance()
+	var v float64 = 0
+	if err != nil {
+		return v, err
+	}
+	for _, output := range w.UTXOs {
+		v += output.GetValue()
+	}
+	return v, nil
+}
+
+func (w *Wallet) SetFullNodeConnection(ipAddr string, port string) {
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithInsecure())
 	serverAddr := ipAddr + ":" + port
 	conn, err := grpc.Dial(serverAddr, opts...)
 	if err != nil {
 		log.Fatal("failed to dial", serverAddr, err)
-		return err
 	}
-	// TODO : Add a callback to terminate connection at end
-	w.FullNodeClient = service.NewFullNodeServiceClient(conn)
-	return nil
+	w.client = service.NewFullNodeServiceClient(conn)
+
+	// Spin up a process that GC idle connection, we GC the client in a
+	// expo backoff way to avoid overloading any peer.
+	go func() {
+		// Retry 3 times in total.
+		retry := 3
+		// How many times we already tried.
+		try := 0
+		// Retry every 3 seconds.
+		base := 3
+		for {
+			time.Sleep(time.Duration(base) * time.Second)
+			if conn.GetState() == connectivity.Ready {
+				// Reset on any successful retry.
+				try = 0
+				base = 3
+				continue
+			}
+			try++
+			// Exponential backoff for retry.
+			base *= 2
+			if try >= retry {
+				// If we already tried enough times, we just break and reclaim the connection.
+				break
+			}
+		}
+		log.Printf("close dead fullnode connection: %s:%s", ipAddr, port)
+		conn.Close()
+		w.client = nil
+	}()
 }
 
+// Blocking call to get balance of current public key. The balance is represented
+// as a list of UTXO and corresponding outputs.
 func (w *Wallet) GetBalance() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	pk := utils.PublicKeyToBytes(&w.Keys.PublicKey)
-	response, err := w.FullNodeClient.GetBalance(ctx, &service.GetBalanceRequest{PublicKey: pk})
+	pk := utils.PublicKeyToBytes(&w.keys.PublicKey)
+	if w.client == nil {
+		return errors.New("no available connection to fullnode")
+	}
+	res, err := w.client.GetBalance(ctx, &service.GetBalanceRequest{PublicKey: pk})
 	if err != nil {
 		return err
 	}
-	for _, pair := range response.GetUtxoOutputPairs() {
+	// Create an entire new balance to overwrite the current balance.
+	balance := make(map[model.UTXOLite]*model.Output)
+	for _, pair := range res.GetUtxoOutputPairs() {
 		utxoLite := model.UTXOLite{
 			PrevTxHash: pair.Utxo.PrevTxHash,
 			Index:      pair.Utxo.Index,
 		}
-		w.UTXOs[utxoLite] = pair.Output
+		balance[utxoLite] = pair.Output
 	}
+	w.UTXOs = balance
 	return nil
 }
 
-func (w *Wallet) TransferMoney(receiverPK string, value float64) error {
-	err1 := w.GetBalance()
-	if err1 != nil {
-		log.Println("failed to get balance from full node", err1)
-		return err1
+func (w *Wallet) TransferMoney(receiver string, value float64) error {
+	err := w.GetBalance()
+	if err != nil {
+		return err
 	}
-	pk, err2 := utils.HexToBytes(receiverPK)
-	if err2 != nil {
-		log.Println("failed to parse receiverPK", err2)
-		return err2
+	receiverPk, err := utils.HexToBytes(receiver)
+	if err != nil {
+		return err
 	}
 	output := &model.Output{
-		PublicKey: pk,
+		PublicKey: receiverPk,
 		Value:     value,
 	}
-	tx, err3 := CreatePendingTransaction(w, []*model.Output{output})
-	if err3 != nil {
-		log.Println("failed to create new transaction", err3)
-		return err3
+	tx, err := utils.CreatePendingTransaction(w.keys, w.UTXOs, []*model.Output{output})
+	if err != nil {
+		return err
 	}
-	err4 := w.SendTransaction(tx)
-	if err4 != nil {
-		log.Println("failed to send transaction to full node", err4)
-		return err4
+	err = w.SendTransaction(tx)
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -82,65 +136,23 @@ func (w *Wallet) TransferMoney(receiverPK string, value float64) error {
 func (w *Wallet) SendTransaction(tx *model.Transaction) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, err := w.FullNodeClient.SetTransaction(ctx, &service.SetTransactionRequest{Tx: tx})
+	if w.client == nil {
+		return errors.New("no available connection to fullnode")
+	}
+	_, err := w.client.SetTransaction(ctx, &service.SetTransactionRequest{Tx: tx})
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-// Create a pending transaction to transfer money to users with public key
-// wallet : a pointer to a wallet struct
-// outputs : an array of struct Output
-// READONLY:
-// * wallet
-func CreatePendingTransaction(wallet *Wallet, outputs []*model.Output) (*model.Transaction, error) {
-	var inputs []*model.Input
-	// Total money from all UTXOs
-	var totalValue = 0.0
-	// building inputs for pending transaction
-	for utxo := range wallet.UTXOs {
-		input := &model.Input{
-			PrevTxHash: utxo.PrevTxHash,
-			Index:      utxo.Index,
-		}
-
-		inputs = append(inputs, input)
-		totalValue += float64(wallet.UTXOs[utxo].Value)
+// Create a new wallet from given credentials.
+func NewWallet(path string, ipAddr string, port string) *Wallet {
+	wallet := &Wallet{
+		UTXOs: make(map[model.UTXOLite]*model.Output),
+		// TODO: refactor this into a client config.
+		keys: utils.ParseKeyFile(path, 304),
 	}
-	// Total amount of money will be transferred to others
-	var totalTransferValue = 0.0
-	for i := 0; i < len(outputs); i++ {
-		totalTransferValue += float64(outputs[i].Value)
-	}
-
-	// Output with amount of money left after transfer
-	selfOutput := model.Output{
-		Value:     (totalValue - totalTransferValue),
-		PublicKey: utils.PublicKeyToBytes(&wallet.Keys.PublicKey),
-	}
-	outputs = append(outputs, &selfOutput)
-	// build pending transaction with inputs and outputs
-	pendingTransaction := model.Transaction{
-		Inputs:  inputs,
-		Outputs: outputs,
-	}
-	// sign inputs with own private key
-	for i := 0; i < len(inputs); i++ {
-		toSignMsg, err := utils.GetInputDataToSignByIndex(&pendingTransaction, i)
-		if err != nil {
-			return &model.Transaction{}, nil
-		}
-		inputs[i].Signature, err = utils.Sign(toSignMsg, wallet.Keys)
-		if err != nil {
-			return &model.Transaction{}, nil
-		}
-	}
-	transactionBytes, err := utils.GetTransactionBytes(&pendingTransaction, false)
-	if err != nil {
-		return &model.Transaction{}, nil
-	}
-	// get Hash for transaction
-	pendingTransaction.Hash = string(utils.SHA256(transactionBytes))
-	return &pendingTransaction, nil
+	wallet.SetFullNodeConnection(ipAddr, port)
+	return wallet
 }

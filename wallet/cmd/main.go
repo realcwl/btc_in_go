@@ -10,40 +10,28 @@ import (
 	"strings"
 
 	"github.com/Luismorlan/btc_in_go/commands"
-	"github.com/Luismorlan/btc_in_go/utils"
 	"github.com/Luismorlan/btc_in_go/wallet"
 )
 
-const DEFAULT_FN_IP string = "127.0.0.1"
-const DEFAULT_FN_PORT string = "8280"
-
 var (
-	fPathFlag        *string
-	createNewKeyFlag *string
-	ipAddrFlag       *string
-	portFlag         *string
+	keyPath *string
+	ipAddr  *string
+	port    *string
 )
 
 func init() {
-	fPathFlag = flag.String("fPath", "", "RSA file path for your private key")
-	createNewKeyFlag = flag.String("newkey", "f", "whether to create a new private key")
-	ipAddrFlag = flag.String("ip", DEFAULT_FN_IP, "ip address of full node")
-	portFlag = flag.String("port", DEFAULT_FN_PORT, "Port number for connection")
+	keyPath = flag.String("key_path", "/tmp/mykey.pem", "RSA file path for your private key")
+	ipAddr = flag.String("ip_addr", "127.0.0.1", "Fullnode's IPv4 address")
+	port = flag.String("port", "10010", "Fullnode's TCP port number for connection")
 }
 
 func main() {
 	flag.Parse()
-	fmt.Println("fPath is", *fPathFlag)
-	fmt.Println("createNewKey is", *createNewKeyFlag)
-	fmt.Println("ipAddr is", *ipAddrFlag)
-	fmt.Println("port is", *portFlag)
+	fmt.Println("keyPath is", *keyPath)
 
-	wallet, err := parseToWallet(*fPathFlag, *createNewKeyFlag, *ipAddrFlag, *portFlag)
-	if err != nil {
-		log.Println("[ERROR]Failed to log in your wallet. Please check the input.")
-		return
-	}
-	log.Println("Wallet logged in")
+	wallet := wallet.NewWallet(*keyPath, *ipAddr, *port)
+	fmt.Println("connected to fullnode endpoint: ", *ipAddr+":"+*port)
+
 	cmd := make(chan commands.ClientCommand)
 	go ParseCommand(cmd)
 	go HandleCommand(cmd, wallet)
@@ -73,47 +61,37 @@ func HandleCommand(cmd chan commands.ClientCommand, wallet *wallet.Wallet) {
 		c := <-cmd
 		switch c.Op {
 		case commands.TRANSFER:
-			if wallet.FullNodeClient == nil {
-				log.Println("Full node connection is missing. Please use command connect to set up connection first")
-				continue
-			}
 			receiverPK := c.Args[0]
-			value, err1 := strconv.ParseFloat(c.Args[1], 64)
-			if err1 != nil {
-				log.Println("cannot transfer with value", c.Args[1], err1)
-				continue
-			}
-			err2 := wallet.TransferMoney(receiverPK, value)
-			if err2 != nil {
-				log.Println("Money transfer failed", err2)
-				continue
-			}
-			log.Println("Money transfer successfully sent to full node")
-		case commands.MY_PUBLIC_KEY:
-			fmt.Println(utils.BytesToHex((utils.PublicKeyToBytes(&wallet.Keys.PublicKey))))
-		case commands.CONNECT_FULL_NODE:
-			ipAddr := c.Args[0]
-			port := c.Args[1]
-			err := wallet.SetFullNodeConnection(ipAddr, port)
+			value, _ := strconv.ParseFloat(c.Args[1], 64)
+			err := wallet.TransferMoney(receiverPK, value)
 			if err != nil {
-				log.Printf("failed to connect to full node address %s", ipAddr+":"+port)
+				log.Println("fail to transfer money: ", err)
 				continue
 			}
-			log.Printf("Full node %s connected", ipAddr+":"+port)
+			log.Printf("successfully send transaction to fullnode, receiver: %s, value: %f", receiverPK, value)
+		case commands.MY_PK:
+			fmt.Println(wallet.GetPublicKey())
+			/*
+				case commands.CONNECT_FULL_NODE:
+
+						ipAddr := c.Args[0]
+						port := c.Args[1]
+						wallet.SetFullNodeConnection(ipAddr, port)
+						if err != nil {
+							log.Printf("failed to connect to full node address %s", ipAddr+":"+port)
+							continue
+						}
+						log.Printf("Full node %s connected", ipAddr+":"+port)
+			*/
+		case commands.GET_BALANCE:
+			v, err := wallet.GetTotalDeposit()
+			if err != nil {
+				log.Println("fail to get balance: " + err.Error())
+				continue
+			}
+			log.Println("your total balance is: ", v)
 		default:
 			log.Println("Unhandled command:", c)
 		}
-		fmt.Print("> ")
 	}
-}
-
-func parseToWallet(fPath string, createNewKey string, ipAddr string, port string) (*wallet.Wallet, error) {
-	var wallet wallet.Wallet
-	var err error
-	err = wallet.SetFullNodeConnection(ipAddr, port)
-	if err != nil {
-		return &wallet, err
-	}
-	wallet.Keys, err = utils.ParseKeyFile(fPath, createNewKey)
-	return &wallet, err
 }

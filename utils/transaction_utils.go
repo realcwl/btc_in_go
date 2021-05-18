@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"crypto/rsa"
 	"errors"
 	"fmt"
 
@@ -118,7 +119,7 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 		totalInput += output.Value
 
 		// Verify signature.
-		inputData, err := GetInputBytes(input, false /*withSig=*/)
+		inputData, err := GetInputDataToSignByIndex(tx, i)
 		if err != nil {
 			return err
 		}
@@ -146,8 +147,8 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 		totalOutput += output.Value
 	}
 
-	if totalInput >= totalOutput {
-		return fmt.Errorf("total input %+v is greater than total output %+v", totalInput, totalOutput)
+	if totalInput < totalOutput {
+		return fmt.Errorf("total input %+v is smaller than total output %+v", totalInput, totalOutput)
 	}
 	return nil
 }
@@ -161,8 +162,7 @@ func CalcTxFee(txs []*model.Transaction, l *model.Ledger) (float64, error) {
 
 		var totalInput = 0.0
 		var totalOutput = 0.0
-
-		for j := 0; i < len(tx.Inputs); j++ {
+		for j := 0; j < len(tx.Inputs); j++ {
 			// Verify the input is using UTXO.
 			input := tx.Inputs[j]
 			inputUtxo := CreateUtxoFromInput(input)
@@ -173,7 +173,7 @@ func CalcTxFee(txs []*model.Transaction, l *model.Ledger) (float64, error) {
 			totalInput += output.Value
 		}
 
-		for j := 0; i < len(tx.Outputs); j++ {
+		for j := 0; j < len(tx.Outputs); j++ {
 			output := tx.Outputs[j]
 			totalOutput += output.Value
 		}
@@ -245,11 +245,70 @@ func CreateCoinbaseTx(totalReward float64, pk []byte, height int64) *model.Trans
 	return tx
 }
 
-// Return all transactions in the pool
+// Return all transactions in the pool.
+// TODO: pre-allocate all memory by size.
 func GetAllTxsInPool(txPool *model.TransactionPool) []*model.Transaction {
-	txs := make([]*model.Transaction, len(txPool.TxPool))
+	txs := []*model.Transaction{}
 	for _, tx := range txPool.TxPool {
 		txs = append(txs, tx)
 	}
 	return txs
+}
+
+// Create a pending transaction to transfer money to users with public key
+// wallet : a pointer to a wallet struct
+// outputs : an array of struct Output
+// READONLY:
+// * wallet
+func CreatePendingTransaction(sk *rsa.PrivateKey, utxos map[model.UTXOLite]*model.Output, outputs []*model.Output) (*model.Transaction, error) {
+	var inputs []*model.Input
+	// Total money from all UTXOs
+	var totalInputValue float64 = 0
+	// building inputs for pending transaction
+	for utxo, output := range utxos {
+		input := &model.Input{
+			PrevTxHash: utxo.PrevTxHash,
+			Index:      utxo.Index,
+		}
+
+		inputs = append(inputs, input)
+		totalInputValue += output.Value
+	}
+	// Total amount of money will be transferred to others
+	var totalOutputValue = 0.0
+	for i := 0; i < len(outputs); i++ {
+		totalOutputValue += outputs[i].Value
+	}
+
+	// Output with amount of money left after transfer, and transfer to self.
+	selfOutput := model.Output{
+		Value:     (totalInputValue - totalOutputValue),
+		PublicKey: PublicKeyToBytes(&sk.PublicKey),
+	}
+	outputs = append(outputs, &selfOutput)
+
+	// build pending transaction with inputs and outputs
+	pendingTransaction := model.Transaction{
+		Inputs:  inputs,
+		Outputs: outputs,
+	}
+
+	// sign inputs with own private key
+	for i := 0; i < len(inputs); i++ {
+		data, err := GetInputDataToSignByIndex(&pendingTransaction, i)
+		if err != nil {
+			return &model.Transaction{}, err
+		}
+		inputs[i].Signature, err = Sign(data, sk)
+		if err != nil {
+			return &model.Transaction{}, err
+		}
+	}
+	transactionBytes, err := GetTransactionBytes(&pendingTransaction, false)
+	if err != nil {
+		return &model.Transaction{}, nil
+	}
+	// get Hash for transaction
+	pendingTransaction.Hash = BytesToHex(SHA256(transactionBytes))
+	return &pendingTransaction, nil
 }

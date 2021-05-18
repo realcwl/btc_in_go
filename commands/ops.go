@@ -31,6 +31,8 @@ const (
 	SHOW
 	// Sync the blockchain.
 	SYNC
+	// Show your public key in hex string.
+	KEY
 )
 
 // A command contains a operation and many arguments.
@@ -41,7 +43,7 @@ type Command struct {
 
 func (c Command) IsValid() bool {
 	switch c.Op {
-	case START, RESTART, STOP, LIST_PEER:
+	case START, RESTART, STOP, LIST_PEER, KEY:
 		return len(c.Args) == 0
 	case ADD_PEER, REMOVE_PEER:
 		if len(c.Args) != 2 {
@@ -91,6 +93,8 @@ func CreateCommand(s string) (Command, error) {
 		cmd.Op = LIST_PEER
 	case "show":
 		cmd.Op = SHOW
+	case "key":
+		cmd.Op = KEY
 	}
 	cmd.Args = ss[1:]
 	if !cmd.IsValid() {

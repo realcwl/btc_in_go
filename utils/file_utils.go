@@ -1,73 +1,45 @@
 package utils
 
 import (
-	"crypto/rand"
 	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
-	"errors"
 	"io/ioutil"
 	"log"
 	"os"
 )
 
-func ParseKeyFile(fPath string, createNewKey string) (*rsa.PrivateKey, error) {
-	var userKey *rsa.PrivateKey
-	var err error
-	if fPath == "" {
-		return nil, errors.New("file path is missing")
+// This function is called in startup time.
+// ParseKeyFile returns key pair from the given path. This function will exit on any error
+// because there's no need to continue if we cannot get key.
+func ParseKeyFile(path string, rsaLen int) *rsa.PrivateKey {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		sk, _ := GenerateKeyPair(rsaLen)
+		WritePrivateKeyToFile(sk, path)
+		return sk
 	}
-	// Generate new key and save to given path
-	if createNewKey == "t" {
-		log.Println("Generating a new key")
-		userKey, err = rsa.GenerateKey(rand.Reader, 304)
-		if err != nil {
-			log.Fatal("Got error when generating new key", err)
-			return nil, err
-		}
-		err2 := SavePrivateKeyToFile(userKey, fPath)
-		if err2 != nil {
-			log.Fatal("Got error when saving new key", err2)
-			return nil, err2
-		}
-		return userKey, nil
-	}
-	// Read key from exsiting rsa file
-	userKey, err = ReadKeyFromFPath(fPath)
-	if err != nil {
-		log.Printf("Failed to read your key from path %s with error %s", fPath, err)
-		return nil, err
-	}
-	return userKey, nil
+	sk := ReadKeyFromPath(path)
+	return sk
 }
 
-func SavePrivateKeyToFile(privkey *rsa.PrivateKey, fpath string) error {
-	f, err := os.Create(fpath)
+// Write the given private key into file in bytes. Exit if fail to write
+func WritePrivateKeyToFile(sk *rsa.PrivateKey, path string) {
+	f, err := os.Create(path)
 	if err != nil {
-		log.Println("failed to open file", fpath, err)
-		return err
+		log.Fatalln("fail to write sk: " + err.Error())
 	}
 	defer f.Close()
-	_, err2 := f.WriteString(string(PrivateKeyToBytes(privkey)))
-	if err2 != nil {
-		log.Println("failed to save key in", fpath, err2)
-		return err2
+	_, err = f.Write(PrivateKeyToBytes(sk))
+	if err != nil {
+		log.Fatalln("fail to write sk: " + err.Error())
 	}
-	log.Println("Saved private key in file", fpath)
-
-	return nil
 }
 
-func ReadKeyFromFPath(fPath string) (*rsa.PrivateKey, error) {
-	fileContent, err := ioutil.ReadFile(fPath)
-	if err != nil {
-		return nil, err
+// Read key from the given path. If the key is invalid, exit the execution
+// because there is no need to continue.
+func ReadKeyFromPath(path string) *rsa.PrivateKey {
+	data, err := ioutil.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		log.Fatalln("fail to read private key from path: " + path)
 	}
-	if len(fileContent) == 0 {
-		log.Println("File is empty, please check filepath.")
-		return nil, nil
-	}
-	block, _ := pem.Decode(fileContent)
-	key, _ := x509.ParsePKCS1PrivateKey(block.Bytes)
-	return key, nil
+	sk := BytesToPrivateKey(data)
+	return sk
 }

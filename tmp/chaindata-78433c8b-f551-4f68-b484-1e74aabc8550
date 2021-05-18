@@ -1,6 +1,0 @@
-digraph structs {
-  node [shape=Mrecord];
-  2 [label="<name> coinbaseTransaction |{<f0> hash | \"\"} |{<f1> outputs | []visualize.output\{\}} |{<f2> height | 0}  "];
-  1 [label="<name> block |{<f0> hash | \"00\"} |{<f1> prevHash | \"\"} |<f2> coinbase|{<f3> txs | []visualize.transaction\{\}} |{<f4> nounce | 0} |{<f5> children | []visualize.block\{\}}  "];
-  1:f2 -> 2:name;
-}

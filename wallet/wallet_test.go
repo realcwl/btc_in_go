@@ -22,7 +22,7 @@ func GetTestWallet() Wallet {
 	}
 
 	return Wallet{
-		Keys: privateKey,
+		keys: privateKey,
 		UTXOs: map[model.UTXOLite]*model.Output{
 			utxos: &output,
 		},
@@ -39,7 +39,7 @@ func TestCreatePendingTransaction(t *testing.T) {
 		},
 	}
 
-	actualTx, _ := CreatePendingTransaction(&testWallet, testOutputs)
+	actualTx, _ := utils.CreatePendingTransaction(testWallet.keys, testWallet.UTXOs, testOutputs)
 
 	actualSignature := actualTx.Inputs[0].Signature
 
@@ -49,7 +49,7 @@ func TestCreatePendingTransaction(t *testing.T) {
 	}
 	selfOutput := &model.Output{
 		Value:     40,
-		PublicKey: utils.PublicKeyToBytes(&testWallet.Keys.PublicKey),
+		PublicKey: utils.PublicKeyToBytes(&testWallet.keys.PublicKey),
 	}
 	expectedOutputs := testOutputs
 	expectedOutputs = append(expectedOutputs, selfOutput)
@@ -60,5 +60,5 @@ func TestCreatePendingTransaction(t *testing.T) {
 	}
 	expectedMsg, _ := utils.GetInputDataToSignByIndex(&expectedPendingTx, 0)
 
-	assert.True(t, utils.Verify(expectedMsg, &testWallet.Keys.PublicKey, actualSignature))
+	assert.True(t, utils.Verify(expectedMsg, &testWallet.keys.PublicKey, actualSignature))
 }

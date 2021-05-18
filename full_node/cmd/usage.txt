@@ -1,0 +1,32 @@
+Instruction on Usage
+1. Add Peers
+$ add_peer PEER_IPV4 PEER_PORT
+This command will add a mutual TCP connection between peer and current node. Adding a peer will start to receive network broadcast. Dead peer will be automatically pruned.
+
+2. List Peers
+$ list_peer
+List all peers this fullnode has connection to.
+
+3. Start Mining
+$ start
+Start mining at the tail of the chain, broadcast the mined block if successfully find a nounce without interruption.
+
+4. Stop Mining
+$ stop
+Stop mining. Note that this node will still participate the consensus by validating and broadcasting blocks.
+
+5. Restart Mining
+$ restart
+Restart the mining process at the new tail. In most cases you don't need to issue this command because mining will be restarted on tail change.
+
+6. Show Blockchain
+$ show NUMBER
+Show the blocks in the last ${NUMBER} of layers. Listing all branched. Note that, you'll need to install graphviz to actually see the rendered blockchain.
+
+7. Sync Blockchain
+$ sync
+Mostly likely you won't need this command. Your node will sync with others once it received invalid blocks multiple times. But you can proactively issue this command to sync.
+
+8. Show Public Key in Hex
+$ key
+Show public key in hex string, share to others to receive transaction.

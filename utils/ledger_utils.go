@@ -22,6 +22,12 @@ func HandleTransaction(tx *model.Transaction, l *model.Ledger) error {
 		return err
 	}
 
+	ProcessInputsAndOutputs(tx, l)
+
+	return nil
+}
+
+func ProcessInputsAndOutputs(tx *model.Transaction, l *model.Ledger) {
 	// Claim every input
 	for i := 0; i < len(tx.Inputs); i++ {
 		input := tx.Inputs[i]
@@ -38,8 +44,6 @@ func HandleTransaction(tx *model.Transaction, l *model.Ledger) error {
 		}
 		l.L[model.GetUtxoLite(&utxo)] = output
 	}
-
-	return nil
 }
 
 // Handle a bunch of transactions.
@@ -55,4 +59,13 @@ func HandleTransactions(txs []*model.Transaction, l *model.Ledger) error {
 		}
 	}
 	return nil
+}
+
+// Deep (well..not deep enough) copy a ledger.
+func GetLedgerDeepCopy(l *model.Ledger) *model.Ledger {
+	res := model.NewLedger()
+	for k, v := range l.L {
+		res.L[k] = v
+	}
+	return res
 }
