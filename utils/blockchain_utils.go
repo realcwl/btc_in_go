@@ -8,7 +8,7 @@ import (
 	"github.com/Luismorlan/btc_in_go/model"
 )
 
-// TODO(CX): Create a block from the provided transactions and the previous hash, miner's reward, current
+// Create a block from the provided transactions and the previous hash, miner's reward, current
 // 1. Fill in previous hash.
 // 2. Create coinbase transactions (Reward + Tx fee).
 // 3. Fill in transactions provided.
@@ -38,7 +38,7 @@ func CreateNewBlock(txs []*model.Transaction, prevHash string, reward float64, h
 	return &block, c, []*model.Transaction{}, err
 }
 
-// TODO(chenweilunster): Mine a block, fill the nounce and hash given the current difficulty setting.
+// Mine a block, fill the nounce and hash given the current difficulty setting.
 // difficulty - how many leading zeros
 // Always listen for command interruption and stop mining at any time.
 // This process will only terminate when receive signal.
