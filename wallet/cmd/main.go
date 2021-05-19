@@ -87,14 +87,17 @@ func HandleCommand(cmd chan commands.ClientCommand, wallet *wallet.Wallet) {
 		c := <-cmd
 		switch c.Op {
 		case commands.TRANSFER:
-			receiverPK := c.Args[0]
+			aliasOrPk := c.Args[0]
+			if pk, exist := wallet.GetPKFromAlias(aliasOrPk); exist {
+				aliasOrPk = pk
+			}
 			value, _ := strconv.ParseFloat(c.Args[1], 64)
-			err := wallet.TransferMoney(receiverPK, value)
+			err := wallet.TransferMoney(aliasOrPk, value)
 			if err != nil {
 				wallet.Log("fail to transfer money: " + err.Error())
 				continue
 			}
-			wallet.Log(fmt.Sprintf("successfully send transaction to fullnode, receiver: %s, value: %f", receiverPK, value))
+			wallet.Log(fmt.Sprintf("successfully send transaction to fullnode, receiver: %s, value: %f", aliasOrPk, value))
 		case commands.MY_PK:
 			wallet.Log("\n===============DO NOT COPY THIS LINE================\n" + wallet.GetPublicKey() + "\n===============DO NOT COPY THIS LINE================")
 		case commands.CONNECT:
@@ -113,6 +116,16 @@ func HandleCommand(cmd chan commands.ClientCommand, wallet *wallet.Wallet) {
 				continue
 			}
 			wallet.Log(fmt.Sprintf("your total balance is: %f", v))
+		case commands.ALIAS:
+			wallet.SetAlias(c.Args[1], c.Args[0])
+		case commands.SHOW_ALIAS:
+			aToPk := wallet.ShowAlias()
+			if len(aToPk) == 0 {
+				wallet.Log("no existing alias")
+			}
+			for _, pair := range aToPk {
+				wallet.Log(pair.Alias + " => " + pair.Pk)
+			}
 		default:
 			wallet.Log(fmt.Sprintf("Unimplemented command: %d", c.Op))
 		}

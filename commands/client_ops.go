@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/hex"
 	"errors"
 	"net"
 	"regexp"
@@ -19,6 +20,10 @@ const (
 	CONNECT
 	// Get my own balance
 	GET_BALANCE
+	// Set alias
+	ALIAS
+	// Show alias
+	SHOW_ALIAS
 )
 
 type ClientCommand struct {
@@ -38,7 +43,7 @@ func (c ClientCommand) IsValid() bool {
 			return false
 		}
 		return err == nil && v > 0
-	case MY_PK, GET_BALANCE:
+	case MY_PK, GET_BALANCE, SHOW_ALIAS:
 		return len(c.Args) == 0
 	case CONNECT:
 		if len(c.Args) != 2 {
@@ -50,6 +55,16 @@ func (c ClientCommand) IsValid() bool {
 
 		portRegex, _ := regexp.Compile(PORT_REGEX)
 		return ip != nil && ip.To4() != nil && portRegex.Match([]byte(port))
+	case ALIAS:
+		if len(c.Args) != 2 {
+			return false
+		}
+		pk := c.Args[0]
+		_, err := hex.DecodeString(pk)
+		if err != nil {
+			return false
+		}
+		return true
 	default:
 		return false
 	}
@@ -71,6 +86,10 @@ func CreateClientCommand(s string) (ClientCommand, error) {
 		cmd.Op = CONNECT
 	case "get_balance":
 		cmd.Op = GET_BALANCE
+	case "alias":
+		cmd.Op = ALIAS
+	case "show_alias":
+		cmd.Op = SHOW_ALIAS
 	default:
 		cmd.Op = NOOP
 	}

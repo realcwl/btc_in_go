@@ -28,9 +28,35 @@ type Wallet struct {
 	conn *grpc.ClientConn
 	// The balance. Updated every Transfer and GetBalance.
 	UTXOs map[model.UTXOLite]*model.Output
+	// map from alias to public key.
+	alias map[string]string
 
 	// A command fancy place to put output.
 	g *gocui.Gui
+}
+
+type AliasPkPair struct {
+	Alias string
+	Pk    string
+}
+
+// Set a alias in the map.
+func (w *Wallet) SetAlias(alias string, pk string) {
+	w.alias[alias] = pk
+}
+
+// Return "", false if not found, otherwise return pk, true
+func (w *Wallet) GetPKFromAlias(a string) (string, bool) {
+	pk, exist := w.alias[a]
+	return pk, exist
+}
+
+func (w *Wallet) ShowAlias() []AliasPkPair {
+	res := []AliasPkPair{}
+	for a, pk := range w.alias {
+		res = append(res, AliasPkPair{Alias: a, Pk: pk})
+	}
+	return res
 }
 
 // Return my public key in hex string.
@@ -178,6 +204,7 @@ func (w *Wallet) Log(s string) {
 func NewWallet(path string, g *gocui.Gui) *Wallet {
 	wallet := &Wallet{
 		UTXOs: make(map[model.UTXOLite]*model.Output),
+		alias: make(map[string]string),
 		// TODO: refactor this into a client config.
 		keys: utils.ParseKeyFile(path, 304),
 		g:    g,

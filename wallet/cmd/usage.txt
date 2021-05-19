@@ -5,5 +5,14 @@ $ my_pk
 2. Get balance for this public key
 $ get_balance
 
-3. Transfer to another PK
-$ transfer PEER_PUBLIC_KEY_HEX AMOUNT
+3. Transfer to another PK or alias
+$ transfer PUBLIC_KEY_HEX|ALIAS AMOUNT
+
+4. Connect wallet to a full node
+$ connect FULLNODE_IPV4 FULLNODE_PORT
+
+5. Set Alias for public key
+$ alias PUBLICK_KEY NAME
+
+6. List all alias
+$ show_alias
