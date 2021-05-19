@@ -29,6 +29,7 @@ var (
 	configPath *string
 	keyPath    *string
 	debugMode  *bool
+	wan        *bool
 )
 
 func init() {
@@ -36,6 +37,7 @@ func init() {
 	configPath = flag.String("config_path", "full_node/cmd/config.yaml", "path to full node config")
 	keyPath = flag.String("key_path", "/tmp/mykey.pem", "the path to read or write your credentials.")
 	debugMode = flag.Bool("debug_mode", false, "Using debug mode will disable fancy GUI.")
+	wan = flag.Bool("wan", false, "Expose this fullnode to WAN and connect with others remotely.")
 }
 
 // This function parses command from command line.
@@ -269,6 +271,14 @@ func main() {
 	cfg := ParseAppConfig(*configPath)
 	la := localAddress()
 
+	endpoint := full_node.Address{
+		IpAddr: la.IpAddr,
+		Port:   la.Port,
+	}
+	if !*wan {
+		endpoint.IpAddr = "127.0.0.1"
+	}
+
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", la.Port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -284,16 +294,11 @@ func main() {
 	g := ListenOnInput(cmd, *debugMode)
 
 	// Create a server with peer, config and a command channel to interrupt mining when tail changes.
-	server := full_node.NewFullNodeServer(cfg, []full_node.Peer{}, localAddress(), *keyPath, cmd, g)
+	server := full_node.NewFullNodeServer(cfg, []full_node.Peer{}, endpoint, *keyPath, cmd, g)
 	service.RegisterFullNodeServiceServer(grpcServer, server)
-
-	// Create 2 routine dedicated for mining.
-	// cmd: Parse string input and create command.
-	// ctl: A separate channel that pass signal to mining routine to interrupt the mining process.
-	// ctl needs to be passed to server in order to let each
 
 	go HandleCommand(cmd, server)
 
-	server.Log(fmt.Sprintf("Starting to serve at endpoint: %s:%s", la.IpAddr, la.Port))
+	server.Log(fmt.Sprintf("Starting to serve at endpoint: %s:%s", endpoint.IpAddr, endpoint.Port))
 	grpcServer.Serve(lis)
 }

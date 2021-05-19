@@ -59,7 +59,7 @@ func (c Command) IsValid() bool {
 
 		portRegex, _ := regexp.Compile(PORT_REGEX)
 		// Is a valid public ipv4 address and has valid port.
-		return ip != nil && ip.To4() != nil && ip.IsGlobalUnicast() && portRegex.Match([]byte(port))
+		return ip != nil && ip.To4() != nil && portRegex.Match([]byte(port))
 	case SHOW:
 		if len(c.Args) != 1 {
 			return false
