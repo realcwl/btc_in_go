@@ -75,10 +75,17 @@ func HandleCommand(cmd chan commands.Command, server *full_node.FullNodeServer) 
 			is_mining = true
 			go func() {
 				for {
+					// Stop mining if we don't have any peer. Otherwise we mine fork the blockchain.
+					if len(server.GetAllPeers()) == 0 {
+						is_mining = false
+						server.Log("cannot start mining: no peer")
+						return
+					}
 					res, err := server.Mine(ctl)
 					if err != nil {
 						server.Log(err.Error())
 					}
+					// If explicitly stopped, return.
 					if res.Op == commands.STOP {
 						is_mining = false
 						return
