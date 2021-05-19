@@ -16,3 +16,5 @@ $ alias PUBLICK_KEY NAME
 
 6. List all alias
 $ show_alias
+
+NOTE: For some unknown reason you must enlarge the terminal to make sure PK can be pasted in one line, otherwise you won't be able to paste input.

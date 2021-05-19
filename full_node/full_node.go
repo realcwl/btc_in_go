@@ -63,6 +63,13 @@ func (f *FullNode) AddTransactionToPool(tx *model.Transaction) error {
 	return nil
 }
 
+func (f *FullNode) RemoveTransactionFromPool(tx *model.Transaction) {
+	f.m.Lock()
+	defer f.m.Unlock()
+
+	delete(f.txPool.TxPool, tx.Hash)
+}
+
 // Return a deep copy of the ledger at given depth.
 func (f *FullNode) GetLedgerSnapshotAtDepth(depth int64) *model.Ledger {
 	f.m.RLock()
@@ -89,10 +96,21 @@ func (f *FullNode) CreateNewBlock(ctl chan commands.Command, height int64) (*mod
 	// Make a deepcopy of the ledger at tail.
 	l := utils.GetLedgerDeepCopy(f.blockchain.Tail.L)
 	tail := f.blockchain.Tail
+	// TODO: Validate the transactions before actual mining.
 	txs := utils.GetAllTxsInPool(f.txPool)
-	// Mining is a really heavy task
 	f.m.RUnlock()
-	block, c, err := utils.CreateNewBlock(txs, tail.B.Hash, f.config.COINBASE_REWARD, height, utils.PublicKeyToBytes(&f.keys.PublicKey), l, f.config.DIFFICULTY, ctl)
+
+	// utils.CreateNewBlock is the actual mining, which is a really heavy task that could take
+	// minutes and takes a large amount of resources.
+	block, c, errTxs, err := utils.CreateNewBlock(txs, tail.B.Hash, f.config.COINBASE_REWARD, height, utils.PublicKeyToBytes(&f.keys.PublicKey), l, f.config.DIFFICULTY, ctl)
+
+	// We need to clean up all failure transactions from the mining pool.
+	if len(errTxs) != 0 {
+		for _, tx := range errTxs {
+			f.RemoveTransactionFromPool(tx)
+		}
+	}
+
 	return block, c, err
 }
 
@@ -196,7 +214,7 @@ func (f *FullNode) HandleNewBlock(pendingBlock *model.Block) (bool, bool, error)
 	}
 
 	// Handle all non-coinbase transactions and process Coinbase.
-	err = utils.HandleTransactions(pendingBlock.Txs, l)
+	_, err = utils.HandleTransactions(pendingBlock.Txs, l)
 	if err != nil {
 		return tailChange, false, err
 	}

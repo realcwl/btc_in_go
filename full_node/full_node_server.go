@@ -153,6 +153,7 @@ func (sev *FullNodeServer) Mine(ctl chan commands.Command) (commands.Command, er
 	height := sev.fullNode.GetHeight() + 1
 
 	b, c, err := sev.fullNode.CreateNewBlock(ctl, height)
+
 	if err != nil {
 		return c, err
 	}

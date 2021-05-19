@@ -1,6 +1,10 @@
 package utils
 
-import "github.com/Luismorlan/btc_in_go/model"
+import (
+	"errors"
+
+	"github.com/Luismorlan/btc_in_go/model"
+)
 
 func CreateUtxoFromInput(input *model.Input) model.UTXO {
 	return model.UTXO{
@@ -14,7 +18,7 @@ func CreateUtxoFromInput(input *model.Input) model.UTXO {
 // 2. Claim every input.
 // 3. Store every output.
 // Return true if currently handles the transactions, false if the transaction is invalid.
-// Note: ledger will be changed afterwards, please
+// Note: ledger will be changed afterwards, please make a deep copy before passing in.
 func HandleTransaction(tx *model.Transaction, l *model.Ledger) error {
 	// First validate the transaction.
 	err := IsValidTransaction(tx, l)
@@ -48,17 +52,22 @@ func ProcessInputsAndOutputs(tx *model.Transaction, l *model.Ledger) {
 
 // Handle a bunch of transactions.
 // Note that ledger will be changed directly, when passing ledger to this function, be sure to pass a deep copy.
+// When error, this function returns all transactions that causes error.
 // MUTABLE:
 // * l
-func HandleTransactions(txs []*model.Transaction, l *model.Ledger) error {
+func HandleTransactions(txs []*model.Transaction, l *model.Ledger) ([]*model.Transaction, error) {
+	errTxs := []*model.Transaction{}
 	for i := 0; i < len(txs); i++ {
 		tx := txs[i]
 		err := HandleTransaction(tx, l)
 		if err != nil {
-			return err
+			errTxs = append(errTxs, tx)
 		}
 	}
-	return nil
+	if len(errTxs) != 0 {
+		return errTxs, errors.New("one or many transactions are invalid.")
+	}
+	return errTxs, nil
 }
 
 // Deep (well..not deep enough) copy a ledger.

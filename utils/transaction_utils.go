@@ -86,12 +86,13 @@ func GetInputDataToSignByIndex(t *model.Transaction, index int) ([]byte, error) 
 }
 
 // A transaction is valid if:
-// 1. Total outputs are smaller or equal to inputs.
-// 2. All inputs are UTXO.
+// 1. All inputs are UTXO.
+// 2. Total outputs are smaller or equal to inputs.
 // 3. Outputs are non-negative number.
 // 4. Signatures are valid.
-// 5. No double spending.
+// 5. No 2 inputs claiming the same UTXO in this transaction.
 // 6. Hash matches.
+// This function
 func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 	var totalInput = 0.0
 	var totalOutput = 0.0
@@ -132,7 +133,7 @@ func IsValidTransaction(tx *model.Transaction, l *model.Ledger) error {
 		}
 
 		// No double spending.
-		if _, exist := seenUtxo[model.GetUtxoLite(&inputUtxo)]; exist {
+		if seenUtxo[model.GetUtxoLite(&inputUtxo)] {
 			return fmt.Errorf("the input is a double spending: %+v", input.String())
 		}
 		seenUtxo[model.GetUtxoLite(&inputUtxo)] = true
@@ -162,6 +163,7 @@ func CalcTxFee(txs []*model.Transaction, l *model.Ledger) (float64, error) {
 
 		var totalInput = 0.0
 		var totalOutput = 0.0
+
 		for j := 0; j < len(tx.Inputs); j++ {
 			// Verify the input is using UTXO.
 			input := tx.Inputs[j]

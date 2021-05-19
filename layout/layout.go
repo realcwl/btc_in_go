@@ -64,11 +64,12 @@ func (pc *PastCmd) Layout(g *gocui.Gui) error {
 func (i *FullNodeInput) Layout(g *gocui.Gui) error {
 	maxX, maxY := g.Size()
 	// Bottom left.
-	v, err := g.SetView(i.name, 1, maxY-5, maxX/3, maxY-1)
+	v, err := g.SetView(i.name, 1, maxY-5, maxX-1, maxY-1)
 	if err != nil && err != gocui.ErrUnknownView {
 		return err
 	}
 	v.Wrap = true
+	v.Autoscroll = true
 	v.Editor = i
 	v.Editable = true
 	return nil
@@ -77,11 +78,12 @@ func (i *FullNodeInput) Layout(g *gocui.Gui) error {
 func (w *WalletInput) Layout(g *gocui.Gui) error {
 	maxX, maxY := g.Size()
 	// Bottom left.
-	v, err := g.SetView(w.name, 1, maxY-5, maxX/3, maxY-1)
+	v, err := g.SetView(w.name, 1, maxY-5, maxX-1, maxY-1)
 	if err != nil && err != gocui.ErrUnknownView {
 		return err
 	}
 	v.Wrap = true
+	v.Autoscroll = true
 	v.Editor = w
 	v.Editable = true
 	return nil
@@ -90,7 +92,7 @@ func (w *WalletInput) Layout(g *gocui.Gui) error {
 func (l *Logger) Layout(g *gocui.Gui) error {
 	maxX, maxY := g.Size()
 	// Bottom left corner.
-	v, _ := g.SetView(l.name, maxX/3+1, 1, maxX-1, maxY-1)
+	v, _ := g.SetView(l.name, maxX/3+1, 1, maxX-1, maxY-6)
 	v.Autoscroll = true
 	v.Wrap = true
 	return nil

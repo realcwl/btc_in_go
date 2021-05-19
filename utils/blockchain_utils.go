@@ -2,6 +2,7 @@ package utils
 
 import (
 	"errors"
+	"log"
 
 	"github.com/Luismorlan/btc_in_go/commands"
 	"github.com/Luismorlan/btc_in_go/model"
@@ -13,16 +14,18 @@ import (
 // 3. Fill in transactions provided.
 // 4. Mine the block.
 // Also, **input ledger must be a deep copy because it will be change permanently.**
-func CreateNewBlock(txs []*model.Transaction, prevHash string, reward float64, height int64, pk []byte, l *model.Ledger, difficulty int, ctl chan commands.Command) (*model.Block, commands.Command, error) {
-	// First calculate transaction fee.
-	fee, err := CalcTxFee(txs, l)
+func CreateNewBlock(txs []*model.Transaction, prevHash string, reward float64, height int64, pk []byte, l *model.Ledger, difficulty int, ctl chan commands.Command) (*model.Block, commands.Command, []*model.Transaction, error) {
+	origL := GetLedgerDeepCopy(l)
+
+	errTxs, err := HandleTransactions(txs, l)
 	if err != nil {
-		return nil, commands.NewDefaultCommand(), err
+		return nil, commands.NewDefaultCommand(), errTxs, err
 	}
 
-	err = HandleTransactions(txs, l)
+	// All transactions are valid if reached here, calculate transaction fee on the original ledger.
+	fee, err := CalcTxFee(txs, origL)
 	if err != nil {
-		return nil, commands.NewDefaultCommand(), err
+		log.Fatalln("there should never be a case where handle transaction success but fail calcFee")
 	}
 
 	block := model.Block{
@@ -32,18 +35,19 @@ func CreateNewBlock(txs []*model.Transaction, prevHash string, reward float64, h
 	}
 
 	c, err := Mine(&block, difficulty, ctl)
-	return &block, c, err
+	return &block, c, []*model.Transaction{}, err
 }
 
 // TODO(chenweilunster): Mine a block, fill the nounce and hash given the current difficulty setting.
 // difficulty - how many leading zeros
 // Always listen for command interruption and stop mining at any time.
+// This process will only terminate when receive signal.
 func Mine(block *model.Block, difficulty int, ctl chan commands.Command) (commands.Command, error) {
 	for i := 0; i < int(^uint(0)>>1); i++ {
-		//time.Sleep(time.Second)
+		// time.Sleep(time.Second)
 		select {
 		case c := <-ctl:
-			return c, errors.New("terminated by command")
+			return c, errors.New("mining terminated, new block received or explicit termination")
 		default:
 			block.Nounce = int64(i)
 			isMatched, digest := MatchDifficulty(block, difficulty)
